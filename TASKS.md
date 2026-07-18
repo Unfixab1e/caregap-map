@@ -60,6 +60,17 @@ Legend: ✅ code-complete **and** locally tested · 🟡 code-complete, **not li
 - ✅ Before/after: Trusted 535 → 203, Review 2,535 → 2,867, Gap/Insufficient unchanged
 - ⬜ Relax/tune with human labels once evals/private/icu_review.csv is filled
 
+## Offline Codex extraction pipeline (2026-07-18)
+
+- ✅ Resumable `codex exec` batch pipeline (ChatGPT-authenticated, no OPENAI_API_KEY);
+  shared payload_to_evidence guardrails; deterministic scoring reused; checkpoints,
+  retry→split→quarantine, atomic writes; 31 stub-backed tests
+- ✅ Real 24-record Luna pilot: 23 ok / 1 quarantined (the corrupted column-shifted
+  record - guardrails, not model weakness), 87% agreement with the OpenAI extractor,
+  74% with deterministic, ~26 s/record; Terra escalation judged unnecessary
+- ⬜ 100- and 500-record stability runs, then decide on the full 10,077 sweep
+  (~404+ executions; NOT executed)
+
 ## Backlog
 
 - ⬜ NFHS district-level join (fuzzy match with recorded confidence)
