@@ -27,6 +27,10 @@ from caregap_map.config import (  # noqa: E402
     CLASS_NEEDS_REVIEW,
     CLASS_TRUSTED,
     REGION_DATA_DESERT,
+    REGION_DISCLAIMER,
+    REGION_NEEDS_REVIEW,
+    REGION_PLANNING_GAP,
+    REGION_TRUSTED,
     SUBTYPE_GENERAL,
     SUBTYPE_LABELS,
     load_env_file,
@@ -51,6 +55,10 @@ CLASS_ICONS = {
     CLASS_NEEDS_REVIEW: "🟡",
     CLASS_LIKELY_GAP: "🔴",
     CLASS_INSUFFICIENT: "⚪",
+    REGION_TRUSTED: "🟢",
+    REGION_NEEDS_REVIEW: "🟡",
+    REGION_PLANNING_GAP: "🔴",
+    REGION_DATA_DESERT: "⚪",
 }
 
 st.set_page_config(page_title="CareGap Map", page_icon="🏥", layout="wide")
@@ -74,13 +82,13 @@ def note_store() -> ReviewStore:
 
 def status_banner(status: str, reason: str) -> None:
     icon = CLASS_ICONS.get(status, "⚪")
-    if status == CLASS_TRUSTED:
+    if status in (CLASS_TRUSTED, REGION_TRUSTED):
         st.success(f"{icon} **{status}** - {reason}")
-    elif status in (CLASS_LIKELY_GAP,):
+    elif status in (CLASS_LIKELY_GAP, REGION_PLANNING_GAP):
         st.error(f"{icon} **{status}** - {reason}")
-    elif status == CLASS_NEEDS_REVIEW:
+    elif status in (CLASS_NEEDS_REVIEW, REGION_NEEDS_REVIEW):
         st.warning(f"{icon} **{status}** - {reason}")
-    else:  # data desert / insufficient
+    else:  # insufficient data / data desert
         st.info(f"⚪ **{status}** - {reason}")
 
 
@@ -349,9 +357,15 @@ def main() -> None:
         region_label = f"{state} / {district}"
 
     # ---------------- Regional summary ----------------
-    st.header(f"Regional coverage - {region_label}")
+    st.header(f"Regional evidence - {region_label}")
     summary = summarize_facilities(subset, config)
     status_banner(summary["region_status"], summary["region_status_reason"])
+    st.caption(f"⚠️ {REGION_DISCLAIMER}")
+    if state == "All India" or not district:
+        st.caption(
+            "State-level numbers are high-level summaries — select a district for the "
+            "planning view."
+        )
     metrics_row(summary)
 
     if summary["region_status"] == REGION_DATA_DESERT and summary["facility_count"] > 0:

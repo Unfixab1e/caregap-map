@@ -9,6 +9,9 @@ from caregap_map.config import (
     CLASS_NEEDS_REVIEW,
     CLASS_TRUSTED,
     REGION_DATA_DESERT,
+    REGION_NEEDS_REVIEW,
+    REGION_PLANNING_GAP,
+    REGION_TRUSTED,
     ScoringConfig,
 )
 
@@ -64,18 +67,20 @@ class TestRegionalClassification:
         assert a["trusted_icu_count"] == 1
         assert a["likely_gap_count"] == 2
 
-    def test_trusted_state(self):
+    def test_trusted_state_wording_is_evidence_not_coverage(self):
         out = aggregate_regions(build_scored(), "state").set_index("state")
-        assert out.loc["StateA", "region_status"] == CLASS_TRUSTED
+        assert out.loc["StateA", "region_status"] == REGION_TRUSTED
+        # The reason must never imply sufficient coverage.
+        assert "NOT mean coverage is sufficient" in out.loc["StateA", "region_status_reason"]
 
-    def test_documented_absence_is_likely_gap(self):
+    def test_documented_absence_is_planning_gap(self):
         out = aggregate_regions(build_scored(), "state").set_index("state")
-        assert out.loc["StateB", "region_status"] == CLASS_LIKELY_GAP
+        assert out.loc["StateB", "region_status"] == REGION_PLANNING_GAP
 
     def test_unjudgeable_records_are_data_desert_not_gap(self):
         out = aggregate_regions(build_scored(), "state").set_index("state")
         assert out.loc["StateC", "region_status"] == REGION_DATA_DESERT
-        assert out.loc["StateC", "region_status"] != CLASS_LIKELY_GAP
+        assert out.loc["StateC", "region_status"] != REGION_PLANNING_GAP
         # Evidence coverage and data coverage are reported independently.
         assert out.loc["StateC", "data_coverage_pct"] == 0.0
 
@@ -85,7 +90,7 @@ class TestRegionalClassification:
 
     def test_pending_reviews_block_gap_label(self):
         out = aggregate_regions(build_scored(), "state").set_index("state")
-        assert out.loc["StateE", "region_status"] == CLASS_NEEDS_REVIEW
+        assert out.loc["StateE", "region_status"] == REGION_NEEDS_REVIEW
 
     def test_unassigned_region_is_kept(self):
         out = aggregate_regions(build_scored(), "state")

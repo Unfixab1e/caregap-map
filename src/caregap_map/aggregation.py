@@ -16,6 +16,9 @@ from .config import (
     CLASS_NEEDS_REVIEW,
     CLASS_TRUSTED,
     REGION_DATA_DESERT,
+    REGION_NEEDS_REVIEW,
+    REGION_PLANNING_GAP,
+    REGION_TRUSTED,
     ScoringConfig,
 )
 
@@ -31,15 +34,17 @@ def classify_region(
 ) -> tuple[str, str]:
     """Derive a regional status from facility-level results.
 
-    Order of precedence: too little usable data -> Data Desert; any trusted
-    facility -> Trusted Coverage; unresolved reviews -> Needs Human Review;
-    otherwise the region shows well-documented absence -> Likely Medical Gap.
+    Order of precedence: too little usable data -> insufficient to assess;
+    any trusted facility -> trusted EVIDENCE found (presence of evidence,
+    never a statement of sufficient coverage); unresolved reviews -> needs
+    facility verification; otherwise well-documented absence -> potential
+    planning gap.
     """
     t = config.thresholds
     if facility_count < t.region_min_facilities:
         return (
             REGION_DATA_DESERT,
-            f"Only {facility_count} facility record(s) - too few to judge coverage; "
+            f"Only {facility_count} facility record(s) - too few to judge; "
             "this is a data gap, not a confirmed medical gap.",
         )
     if pct_sufficient_data < t.region_min_data_pct:
@@ -50,18 +55,21 @@ def classify_region(
         )
     if trusted_count >= t.region_min_trusted:
         return (
-            CLASS_TRUSTED,
-            f"{trusted_count} facility record(s) with trusted ICU evidence.",
+            REGION_TRUSTED,
+            f"{trusted_count} of {facility_count} facility record(s) show trusted ICU "
+            "evidence. This confirms evidence exists - it does NOT mean coverage is "
+            "sufficient for the population.",
         )
     if needs_review_count > 0:
         return (
-            CLASS_NEEDS_REVIEW,
-            f"No trusted ICU facility, but {needs_review_count} record(s) are ambiguous - "
-            "verify them before calling this an ICU desert.",
+            REGION_NEEDS_REVIEW,
+            f"No trusted ICU evidence, but {needs_review_count} record(s) carry unverified "
+            "claims - verify those facilities before calling this an ICU desert.",
         )
     return (
-        CLASS_LIKELY_GAP,
-        "Records are judgeable and none show credible ICU evidence - likely a real coverage gap.",
+        REGION_PLANNING_GAP,
+        "Records are judgeable and none show credible ICU evidence - a likely planning "
+        "gap (not a clinically verified absence).",
     )
 
 
