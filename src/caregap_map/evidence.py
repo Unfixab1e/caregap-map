@@ -19,7 +19,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .cleaning import normalize_null_like, parse_int_safe, parse_list_field
-from .config import EVIDENCE_TEXT_FIELDS, ScoringConfig
+from .config import EVIDENCE_TEXT_FIELDS, SUBTYPE_GENERAL, ScoringConfig
 
 # Fragment length cap for long free-text matches.
 _MAX_FRAGMENT_LEN = 300
@@ -57,6 +57,7 @@ class EvidenceResult(BaseModel):
     contradiction_flags: list[str] = Field(default_factory=list)
     suspicious_claim_flags: list[str] = Field(default_factory=list)
     extractor: str = "deterministic"
+    icu_subtypes: list[str] = Field(default_factory=list)
     unclear_claims: list[str] = Field(default_factory=list)
     extraction_explanation: str | None = None
 
@@ -168,6 +169,8 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
     result.staffing_signals = sorted(matched_patterns["staffing"])
     result.supporting_fields = sorted(supporting_fields)
 
+    result.icu_subtypes = detect_icu_subtypes(result.supporting_text_fragments, config)
+
     # ICU bed counts (capacity signal).
     all_items = [item for items in texts.values() for item in items]
     result.icu_bed_count = extract_icu_bed_count(all_items, config)
@@ -177,6 +180,32 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
     result.missing_evidence = build_missing_evidence(texts, result)
 
     return result
+
+
+def detect_icu_subtypes(fragments: list[EvidenceFragment], config: ScoringConfig) -> list[str]:
+    """Classify ICU subtype claims from the explicit-claim fragments.
+
+    One facility can carry several subtypes. An explicit fragment that
+    matches no specialised subtype pattern indicates
+    ``general_or_unspecified``. This records what the text CLAIMS - it makes
+    no clinical-equivalence judgment, and NICU/PICU/ICCU evidence must never
+    be presented as confirmed general adult ICU.
+    """
+    subtype_patterns = {
+        name: _compile(tuple(pats)) for name, pats in config.keywords.subtypes.items()
+    }
+    found: set[str] = set()
+    for frag in fragments:
+        if frag.group != "explicit_icu":
+            continue
+        matched = False
+        for name, patterns in subtype_patterns.items():
+            if any(p.search(frag.text) for p in patterns):
+                found.add(name)
+                matched = True
+        if not matched:
+            found.add(SUBTYPE_GENERAL)
+    return sorted(found)
 
 
 def extract_icu_bed_count(texts: Iterable[str], config: ScoringConfig) -> int | None:

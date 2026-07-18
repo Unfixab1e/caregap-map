@@ -27,6 +27,8 @@ from caregap_map.config import (  # noqa: E402
     CLASS_NEEDS_REVIEW,
     CLASS_TRUSTED,
     REGION_DATA_DESERT,
+    SUBTYPE_GENERAL,
+    SUBTYPE_LABELS,
     default_paths,
     load_env_file,
     load_scoring_config,
@@ -176,6 +178,17 @@ def facility_detail(row: pd.Series) -> None:
     """Original record, exact evidence fragments, scores and flags."""
     st.subheader(row["name"] if pd.notna(row["name"]) else "(unnamed facility)")
     status_banner(row["classification"], row["classification_reason"])
+
+    subtypes = json.loads(row.get("icu_subtypes_json") or "[]")
+    if subtypes:
+        pretty = [SUBTYPE_LABELS.get(s, s) for s in subtypes]
+        if SUBTYPE_GENERAL not in subtypes:
+            st.warning(
+                f"⚕️ Intensive-care evidence found: **{', '.join(pretty)} only** — "
+                "no general adult ICU claim in this record."
+            )
+        else:
+            st.markdown(f"⚕️ **Intensive-care evidence:** {', '.join(pretty)}")
 
     left, right = st.columns([1, 1])
 

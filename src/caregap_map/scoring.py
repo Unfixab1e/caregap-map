@@ -230,6 +230,7 @@ def score_dataframe(df: pd.DataFrame, config: ScoringConfig | None = None) -> pd
                 "classification_reason": s.classification_reason,
                 "explicit_icu_claim": s.evidence.explicit_icu_claim,
                 "icu_bed_count": s.evidence.icu_bed_count,
+                "icu_subtypes_json": json.dumps(s.evidence.icu_subtypes),
                 "n_contradiction_flags": len(s.contradiction_flags),
                 "n_validation_flags": len(s.validation_flags),
                 "evidence_fragments_json": json.dumps(

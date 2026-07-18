@@ -32,6 +32,7 @@ from .evidence import (
     EvidenceResult,
     apply_consistency_checks,
     build_missing_evidence,
+    detect_icu_subtypes,
     extract_icu_bed_count,
     field_texts,
 )
@@ -305,6 +306,10 @@ class LlmEvidenceExtractor:
                 result.suspicious_claim_flags.append("llm_bed_count_mismatch")
         elif isinstance(payload_count, int):
             result.suspicious_claim_flags.append("llm_bed_count_unanchored")
+
+        # Subtype detection runs deterministically over the VERIFIED fragments,
+        # so both extractors share identical subtype semantics.
+        result.icu_subtypes = detect_icu_subtypes(result.supporting_text_fragments, self._config)
 
         result.unclear_claims = [str(c) for c in payload.get("unclear_claims", [])][:10]
         result.extraction_explanation = str(payload.get("explanation", "")) or None

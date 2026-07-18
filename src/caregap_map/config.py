@@ -28,6 +28,19 @@ CLASS_NEEDS_REVIEW = "Needs Human Review"
 
 ALL_CLASSES = [CLASS_TRUSTED, CLASS_LIKELY_GAP, CLASS_INSUFFICIENT, CLASS_NEEDS_REVIEW]
 
+# Subtype label for unqualified ICU / intensive-care claims.
+SUBTYPE_GENERAL = "general_or_unspecified"
+
+# Human-readable subtype labels used by the UI and reports.
+SUBTYPE_LABELS = {
+    "neonatal_icu": "NICU (neonatal)",
+    "pediatric_icu": "PICU (paediatric)",
+    "cardiac_icu": "cardiac ICU / ICCU",
+    "medical_icu": "MICU (medical)",
+    "surgical_icu": "SICU (surgical)",
+    SUBTYPE_GENERAL: "general / unspecified ICU",
+}
+
 # Region-level labels reuse the facility labels, but "Insufficient Data"
 # is presented as a data desert at region level.
 REGION_DATA_DESERT = "Insufficient Data / Data Desert"
@@ -158,6 +171,29 @@ class EvidenceKeywords(BaseModel):
         r"\bicu\s+(is\s+)?not\s+available",
         r"\bdoes\s+not\s+(have|offer|provide)\s+(an?\s+)?(icu|intensive\s+care)",
     ]
+    # ICU subtype detection over explicit-claim fragments. An explicit
+    # fragment matching none of these is "general_or_unspecified". NICU/PICU/
+    # ICCU evidence must never be displayed as confirmed general adult ICU.
+    subtypes: dict[str, list[str]] = {
+        "neonatal_icu": [r"\bnicu\b", r"neonatal\s+(intensive|critical)\s+care"],
+        "pediatric_icu": [r"\bpicu\b", r"p(?:ae|e)diatric\s+(intensive|critical)\s+care"],
+        "cardiac_icu": [
+            r"\biccu\b",
+            r"\bcicu\b",
+            r"cardiac\s+(intensive|critical)\s+care",
+            r"coronary\s+care\s+unit",
+            r"cardiac\s+icu",
+        ],
+        "medical_icu": [r"\bmicu\b", r"medical\s+(intensive|critical)\s+care", r"medical\s+icu"],
+        "surgical_icu": [
+            r"\bsicu\b",
+            r"surgical\s+(intensive|critical)\s+care",
+            r"surgical\s+icu",
+            r"post[- ]?surgical\s+icu",
+            r"post[- ]?operative\s+icu",
+        ],
+    }
+
     # Patterns that extract an ICU bed count (first capture group = count).
     # Each pattern requires the number, a bed word and ICU/intensive-care
     # context TOGETHER in one passage - that adjacency is the anchoring rule.
