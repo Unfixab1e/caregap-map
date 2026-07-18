@@ -20,6 +20,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from .config import default_paths
+from .databricks_connect import connect_warehouse, have_warehouse_credentials, resolve_http_path
 
 # What a note can be attached to.
 SCOPE_TYPES = ("facility", "district", "state")
@@ -142,13 +143,17 @@ class DeltaReviewStore:
             if not _IDENTIFIER.match(value):
                 raise ValueError(f"Invalid Databricks {name} identifier: {value!r}")
         self._host = host or os.environ.get("DATABRICKS_HOST", "")
-        self._http_path = http_path or os.environ.get("DATABRICKS_HTTP_PATH", "")
+        self._http_path = resolve_http_path(http_path)
         self._token = token or os.environ.get("DATABRICKS_TOKEN", "")
         self._connection_factory = connection_factory
-        if connection_factory is None and not (self._host and self._http_path and self._token):
+        if connection_factory is None and not (
+            self._http_path and have_warehouse_credentials(self._host, self._token)
+        ):
             raise RuntimeError(
-                "DeltaReviewStore needs DATABRICKS_HOST, DATABRICKS_HTTP_PATH and "
-                "DATABRICKS_TOKEN (see DEPLOYMENT.md), or CAREGAP_REVIEW_STORE=sqlite."
+                "DeltaReviewStore needs DATABRICKS_HOST plus a warehouse HTTP path "
+                "(DATABRICKS_HTTP_PATH or DATABRICKS_WAREHOUSE_ID) and either "
+                "DATABRICKS_TOKEN or app service-principal OAuth (see DEPLOYMENT.md), "
+                "or CAREGAP_REVIEW_STORE=sqlite."
             )
         self._ensure_table()
 
@@ -159,18 +164,7 @@ class DeltaReviewStore:
     def _connect(self):
         if self._connection_factory is not None:
             return self._connection_factory()
-        try:
-            from databricks import sql as dbsql
-        except ImportError as exc:
-            raise ImportError(
-                "The 'databricks-sql-connector' package is required for the Delta "
-                'review store. Install it with: pip install -e ".[databricks]"'
-            ) from exc
-        return dbsql.connect(
-            server_hostname=self._host.removeprefix("https://"),
-            http_path=self._http_path,
-            access_token=self._token,
-        )
+        return connect_warehouse(self._host, self._http_path, self._token)
 
     def _execute(self, sql: str, parameters: dict | None = None, fetch: bool = False):
         with self._connect() as conn, conn.cursor() as cursor:
@@ -178,11 +172,17 @@ class DeltaReviewStore:
             return cursor.fetchall() if fetch else None
 
     def _ensure_table(self) -> None:
-        self._execute(
-            f"CREATE TABLE IF NOT EXISTS {self._qualified} ("
-            "id STRING, created_at STRING, scope_type STRING, "
-            "scope_id STRING, note STRING, author STRING)"
-        )
+        try:
+            self._execute(
+                f"CREATE TABLE IF NOT EXISTS {self._qualified} ("
+                "id STRING, created_at STRING, scope_type STRING, "
+                "scope_id STRING, note STRING, author STRING)"
+            )
+        except Exception:
+            # The app service principal may lack CREATE on the schema while the
+            # table already exists (pre-created by an admin). Accept that state
+            # if the table is queryable; otherwise surface the real problem.
+            self._execute(f"SELECT 1 FROM {self._qualified} LIMIT 1", fetch=True)
 
     def add_note(self, note: ReviewNote) -> ReviewNote:
         _validate_note(note)

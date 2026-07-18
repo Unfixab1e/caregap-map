@@ -4,12 +4,27 @@ Two supported paths. **Path A (volume-mounted Parquet)** is the fastest and need
 code changes; **Path B (Unity Catalog tables)** uses the `DatabricksDataSource` adapter
 through a SQL warehouse.
 
-> **Status (2026-07-18):** Databricks CLI v1.8.0 is installed on the dev machine, all
-> artifacts below are ready, but the steps have **not been executed against a live
-> workspace** — `databricks auth login` needs an interactive browser session by a
-> workspace member. The adapters are unit-tested with injected connections. Do not
-> mark deployment complete until the app loads and the main workflow works in a
-> browser.
+> **Status (2026-07-18): DEPLOYED AND LIVE.**
+> URL: **https://caregap-map-7474654537485030.aws.databricksapps.com**
+> Workspace `dbc-3fe4db90-7a41` (Free Edition). Executed: schema
+> `workspace.caregap` + managed volume `caregap_data` created; the three
+> app-facing Parquet files uploaded; app `caregap-map` created with two app
+> resources (sql-warehouse `14de2715673a68cd` CAN_USE, volume READ_VOLUME);
+> app service principal granted USE CATALOG / USE SCHEMA / SELECT+MODIFY on
+> `workspace.caregap.review_notes`; source synced and deployed
+> (deployment SUCCEEDED, app RUNNING). Verified: authenticated HTTP 200
+> before and after a full `apps stop`/`start` cycle, and a Delta reviewer
+> note written before the restart survived it. Remaining human check: the
+> in-browser click-through (state/district selection, drilldown, saving a
+> note through the UI, which exercises the service principal's OAuth write
+> path end-to-end).
+>
+> **Windows note:** run CLI commands touching `/sql/...`, `/Workspace/...`
+> or `/Volumes/...` from PowerShell, or set `MSYS_NO_PATHCONV=1` in Git
+> Bash — MSYS silently rewrites such arguments into `C:/Program Files/Git/...`
+> and produces opaque connection errors. Prefer `DATABRICKS_WAREHOUSE_ID`
+> over `DATABRICKS_HTTP_PATH` in env vars for the same reason (the code
+> derives the HTTP path from the id).
 
 ## Prerequisites
 

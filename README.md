@@ -179,10 +179,17 @@ python scripts/evaluate_labels.py     # false-Trusted / false-Gap first-class me
 
 ## Live app & deployment status
 
-**Not yet live.** All deployment artifacts are ready (requirements.txt, app.yaml,
-DEPLOYMENT.md, register_tables.sql, Databricks CLI installed); executing them requires a
-workspace member to run `databricks auth login` (interactive browser OAuth). Once
-deployed, the live URL belongs here: **`<pending live deployment>`**.
+**Live** on Databricks Apps (workspace `dbc-3fe4db90-7a41`):
+
+> **https://caregap-map-7474654537485030.aws.databricksapps.com**
+> (requires workspace login; Path A — Parquet from the `workspace.caregap.caregap_data`
+> volume; reviewer notes in the `workspace.caregap.review_notes` Delta table via the
+> app's SQL-warehouse resource with service-principal OAuth)
+
+Verified programmatically: deployment probe SUCCEEDED, app RUNNING, authenticated
+HTTP 200 on the URL before and after a full stop/start cycle, and a reviewer note
+written to the Delta table before the restart was still present after it. See
+[DEPLOYMENT.md](DEPLOYMENT.md) for the exact executed steps.
 
 ## Limitations (honest list)
 

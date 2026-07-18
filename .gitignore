@@ -36,6 +36,9 @@ venv/
 .coverage
 htmlcov/
 
+# Databricks CLI sync state
+.databricks/
+
 # --- Editors / OS ---
 .vscode/
 .idea/

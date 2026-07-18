@@ -1,13 +1,15 @@
-# Databricks App runtime dependencies (Path A: Parquet from a UC volume).
+# Databricks App runtime dependencies (Path A: Parquet from a UC volume,
+# Delta-backed reviewer notes via SQL warehouse).
 # Databricks Apps install from requirements.txt, not pyproject.toml.
 # Local development uses `pip install -e ".[dev]"` instead - see README.md.
 #
 # Deliberately excluded from the app runtime:
-#   openai                    - LLM comparison is an offline preprocessing step
-#   databricks-sql-connector  - only needed for Path B (UC tables); add it here
-#                               if the deployed app switches to Path B
+#   openai  - LLM comparison is an offline preprocessing step
 streamlit>=1.35,<2
 pandas>=2.1,<3
 pyarrow>=14
 plotly>=5.20,<7
 pydantic>=2.6,<3
+# Durable reviewer notes (DeltaReviewStore) + service-principal OAuth
+databricks-sql-connector>=3.0
+databricks-sdk>=0.20

@@ -1,29 +1,26 @@
 # Databricks Apps configuration for CareGap Map (see DEPLOYMENT.md).
 #
-# Path A (default below): the app reads Parquet straight from a mounted
-# Unity Catalog volume via the local data source.
-# Path B: switch CAREGAP_DATA_SOURCE to "databricks" and provide the
-# SQL-warehouse settings to read registered UC tables instead.
+# Live deployment: Path A - the app reads processed Parquet straight from the
+# mounted Unity Catalog volume via the local data source; reviewer notes go
+# to the workspace.caregap.review_notes Delta table through the app's
+# sql-warehouse resource (service-principal OAuth; DATABRICKS_HOST and
+# DATABRICKS_CLIENT_ID/SECRET are injected by the Apps runtime - no tokens
+# in this file, ever).
 command: ["streamlit", "run", "app.py"]
 env:
   - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS
     value: "false"
   - name: CAREGAP_DATA_SOURCE
     value: "local"
-  # Local dev default; on Databricks point at the volume, e.g.
-  # /Volumes/main/caregap/caregap_data
   - name: CAREGAP_DATA_DIR
-    value: "data"
-  # Reviewer notes: "sqlite" locally; MUST be "databricks" when deployed
-  # (the app filesystem is ephemeral - see DEPLOYMENT.md section 4).
+    value: "/Volumes/workspace/caregap/caregap_data"
   - name: CAREGAP_REVIEW_STORE
-    value: "sqlite"
-  # --- Path B (Unity Catalog tables via SQL warehouse) ---
-  # - name: CAREGAP_DATA_SOURCE
-  #   value: "databricks"
-  # - name: CAREGAP_DATABRICKS_CATALOG
-  #   value: "main"
-  # - name: CAREGAP_DATABRICKS_SCHEMA
-  #   value: "caregap"
-  # - name: DATABRICKS_HTTP_PATH
-  #   value: "/sql/1.0/warehouses/<warehouse-id>"
+    value: "databricks"
+  - name: CAREGAP_DATABRICKS_CATALOG
+    value: "workspace"
+  - name: CAREGAP_DATABRICKS_SCHEMA
+    value: "caregap"
+  # Injected from the app's sql-warehouse resource; the code derives
+  # /sql/1.0/warehouses/<id> from it.
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: "sql-warehouse"

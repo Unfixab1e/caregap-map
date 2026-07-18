@@ -17,9 +17,14 @@ Legend: ✅ code-complete **and** locally tested · 🟡 code-complete, **not li
 - ✅ requirements.txt for the Databricks Apps runtime (Path A)
 - ✅ DEPLOYMENT.md incl. durable-notes acceptance test; scripts/register_tables.sql
 - ✅ Databricks CLI v1.8.0 installed on the dev machine
-- ⬜ **Live deployment — BLOCKED on workspace credentials** (`databricks auth login`
-  needs an interactive browser session by a workspace member). All artifacts ready.
-- ⬜ Live workflow test in a browser (All-India → state → district → drilldown → note)
+- ✅ **Live deployment (2026-07-18):**
+  https://caregap-map-7474654537485030.aws.databricksapps.com — Path A (volume
+  Parquet) + Delta notes via app SQL-warehouse resource (SP OAuth, no tokens in
+  config); deployment SUCCEEDED, app RUNNING, authenticated HTTP 200 verified
+- ✅ Durable-note acceptance at the storage layer: a Delta note written before a full
+  app stop/start survived the restart
+- ⬜ Human in-browser click-through (state → district → drilldown → save a note via
+  the UI, exercising the SP write path end-to-end) — 2 minutes for any teammate
 
 ## Milestone 3 — LLM evidence extractor
 
@@ -35,8 +40,8 @@ Legend: ✅ code-complete **and** locally tested · 🟡 code-complete, **not li
 - ✅ Trusted calibration: explicit claim + ≥2 independent corroboration categories
   (D14; Trusted 2,006 → 535, all demotions to review, none to gap)
 - ✅ Regional wording: evidence ≠ coverage; non-scope disclaimer (Phase 8)
-- ✅ Durable notes: `DeltaReviewStore` + `CAREGAP_REVIEW_STORE` factory (stub-tested)
-- 🟡 Durable-notes refresh/redeploy acceptance — needs the live workspace
+- ✅ Durable notes: `DeltaReviewStore` + `CAREGAP_REVIEW_STORE` factory; live-tested
+  against `workspace.caregap.review_notes` incl. survival across app restart
 - ✅ Human-review evaluation workflow (evals/ + generator + evaluator, 45-row sample
   generated locally)
 - ⬜ Human labels (Nayun) → then re-calibrate thresholds against ground truth

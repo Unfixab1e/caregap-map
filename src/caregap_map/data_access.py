@@ -16,6 +16,7 @@ from typing import Any, Protocol
 import pandas as pd
 
 from .config import DataPaths, default_paths
+from .databricks_connect import connect_warehouse, have_warehouse_credentials, resolve_http_path
 
 
 class DataSource(Protocol):
@@ -109,33 +110,25 @@ class DatabricksDataSource:
         self.catalog = catalog or os.environ.get("CAREGAP_DATABRICKS_CATALOG", "main")
         self.schema = schema or os.environ.get("CAREGAP_DATABRICKS_SCHEMA", "caregap")
         self._host = host or os.environ.get("DATABRICKS_HOST", "")
-        self._http_path = http_path or os.environ.get("DATABRICKS_HTTP_PATH", "")
+        self._http_path = resolve_http_path(http_path)
         self._token = token or os.environ.get("DATABRICKS_TOKEN", "")
         self._connection_factory = connection_factory
         for name, value in (("catalog", self.catalog), ("schema", self.schema)):
             if not _IDENTIFIER.match(value):
                 raise ValueError(f"Invalid Databricks {name} identifier: {value!r}")
-        if connection_factory is None and not (self._host and self._http_path and self._token):
+        if connection_factory is None and not (
+            self._http_path and have_warehouse_credentials(self._host, self._token)
+        ):
             raise MissingDataError(
-                "DatabricksDataSource needs DATABRICKS_HOST, DATABRICKS_HTTP_PATH and "
-                "DATABRICKS_TOKEN (see DEPLOYMENT.md)."
+                "DatabricksDataSource needs DATABRICKS_HOST plus a warehouse HTTP path "
+                "(DATABRICKS_HTTP_PATH or DATABRICKS_WAREHOUSE_ID) and either "
+                "DATABRICKS_TOKEN or app service-principal OAuth (see DEPLOYMENT.md)."
             )
 
     def _connect(self):
         if self._connection_factory is not None:
             return self._connection_factory()
-        try:
-            from databricks import sql as dbsql
-        except ImportError as exc:
-            raise ImportError(
-                "The 'databricks-sql-connector' package is required for the Databricks "
-                'data source. Install it with: pip install -e ".[databricks]"'
-            ) from exc
-        return dbsql.connect(
-            server_hostname=self._host.removeprefix("https://"),
-            http_path=self._http_path,
-            access_token=self._token,
-        )
+        return connect_warehouse(self._host, self._http_path, self._token)
 
     def _read_table(self, dataset: str) -> pd.DataFrame:
         table = DATABRICKS_TABLES[dataset]

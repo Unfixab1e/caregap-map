@@ -26,6 +26,7 @@ llm = [
 ]
 databricks = [
     "databricks-sql-connector>=3.0",
+    "databricks-sdk>=0.20",
 ]
 
 [tool.setuptools.packages.find]
