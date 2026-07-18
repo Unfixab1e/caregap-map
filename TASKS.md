@@ -45,6 +45,16 @@ Legend: ✅ code-complete **and** locally tested · 🟡 code-complete, **not li
 - ✨ District choropleth (needs district geometry with recorded match confidence)
 - ✨ MLflow tracing (deferred, D17 — UI already exposes the full audit chain)
 
+## Provenance hardening (2026-07-18, from challenge prompt files — D18)
+
+- ✅ Specialty tags (criticalCareMedicine) demoted from explicit claim to context signal
+- ✅ Cross-field agreement removed from Trusted corroboration (fields generated in one
+  upstream pass); component renamed cross_field_consistency
+- ✅ directory_or_partner_content_detected validator (multi-facility page leakage)
+- ✅ UI/docs layer-corrected: "supplied record", never "original website sentence"
+- ✅ Before/after: Trusted 535 → 203, Review 2,535 → 2,867, Gap/Insufficient unchanged
+- ⬜ Relax/tune with human labels once evals/private/icu_review.csv is filled
+
 ## Backlog
 
 - ⬜ NFHS district-level join (fuzzy match with recorded confidence)

@@ -13,7 +13,7 @@ desert.
 
 | | Facility state | Meaning |
 |---|---|---|
-| 🟢 | Trusted ICU Coverage | explicit claim + ≥2 independent corroboration categories |
+| 🟢 | Trusted ICU Coverage | explicit claim + ≥2 distinct evidence categories in the record |
 | 🔴 | Likely Medical Gap | well-documented record, no ICU evidence |
 | ⚪ | Insufficient Data | cannot be judged — *unknown*, not a gap |
 | 🟡 | Needs Human Review | contradictory, suspicious, ambiguous or uncorroborated |
@@ -23,11 +23,23 @@ Regions use deliberately different wording — **"Trusted ICU evidence found"**,
 verification"** — because evidence presence is not coverage sufficiency. ICU subtypes
 (NICU/PICU/ICCU/…) are surfaced and never displayed as confirmed general adult ICU.
 
-Every classification is traceable to the **exact original text fragments** that produced
-it, for both the deterministic extractor and the optional LLM extractor (whose quotes are
-verified verbatim against the source; hallucinated quotes are dropped and flagged).
-See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the frozen scope and
-[DECISIONS.md](DECISIONS.md) for the decision log (D1–D17).
+Every classification is traceable to **exact text fragments from the supplied facility
+record**, for both the deterministic extractor and the optional LLM extractor (whose
+quotes are verified verbatim against the record; hallucinated quotes are dropped and
+flagged). See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the frozen scope and
+[DECISIONS.md](DECISIONS.md) for the decision log (D1–D18).
+
+## Dataset-generation provenance (what "evidence" means here)
+
+The supplied facility fields (`description`, `capability`, `procedure`, `equipment`,
+`specialties`) are **structured claims generated upstream** from source website content
+using extraction prompts — `capability`/`procedure`/`equipment` were produced together in
+**one extraction pass** over text **and images**, and specialty tags can derive from the
+facility *name* alone. These claims are not independently verified clinical facts, and a
+claim may have no original webpage sentence at all (image-derived). CareGap Map therefore
+validates **internal consistency and supplied-record traceability** — cross-field
+agreement is treated as consistency, never as independent confirmation — and does not
+certify live service availability (see DECISIONS D18).
 
 ## Quickstart
 
@@ -77,7 +89,7 @@ deliberately excludes `openai` (LLM extraction is an offline preprocessing workf
 2. Read the regional verdict: trust-weighted coverage, judgeable-record share, and the
    four-state breakdown — **medical gaps and data deserts are never conflated**.
 3. Open the facility table behind the regional result, filter by classification.
-4. Drill into a facility: original record, exact evidence fragments, score breakdown,
+4. Drill into a facility: supplied record, exact evidence fragments, score breakdown,
    validator flags, missing evidence.
 5. Save reviewer notes on a facility, district or state (stored in `data/reviews.db`).
 

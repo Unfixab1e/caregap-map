@@ -11,6 +11,7 @@ records a severity used by classification:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -141,7 +142,28 @@ def validate_facility(
             )
         )
 
-    # 8. Geography conflict between the PIN directory and the state field.
+    # 8. ICU evidence that appears to describe ANOTHER organization. The
+    #    upstream pipeline extracted organizations from multi-facility pages
+    #    (directories, referral/empanelment lists, partner pages), so such
+    #    content can leak into a record. Review, never auto-delete.
+    for frag in evidence.supporting_text_fragments:
+        if frag.group == "negation":
+            continue
+        if any(re.search(p, frag.text, re.IGNORECASE) for p in config.keywords.cross_organization):
+            flags.append(
+                ValidationFlag(
+                    name="directory_or_partner_content_detected",
+                    severity=SEV_SUSPICIOUS,
+                    detail=(
+                        "ICU-relevant text looks like directory/referral/partner content "
+                        "that may describe a different organization: "
+                        f"{frag.text[:120]!r}"
+                    ),
+                )
+            )
+            break
+
+    # 9. Geography conflict between the PIN directory and the state field.
     if bool(record.get("geo_conflict")):
         flags.append(
             ValidationFlag(

@@ -64,6 +64,10 @@ def compute_evidence_score(evidence: EvidenceResult, config: ScoringConfig) -> t
     components: dict[str, int] = {}
     if evidence.explicit_icu_claim:
         components["explicit_claim"] = w.explicit_claim
+    elif evidence.specialty_context_signals:
+        # Specialty tags (e.g. criticalCareMedicine) can derive from the
+        # facility name alone upstream: context worth reviewing, never a claim.
+        components["specialty_context"] = w.specialty_context
     if evidence.equipment_signals:
         components["equipment"] = w.equipment
     if evidence.procedure_signals:
@@ -73,7 +77,9 @@ def compute_evidence_score(evidence: EvidenceResult, config: ScoringConfig) -> t
     if evidence.staffing_signals:
         components["staffing"] = w.staffing
     if evidence.explicit_icu_claim and len(evidence.supporting_fields) >= 3:
-        components["multi_field_bonus"] = w.multi_field_bonus
+        # capability/procedure/equipment were generated together upstream, so
+        # this measures the supplied record's internal consistency only.
+        components["cross_field_consistency"] = w.multi_field_bonus
     if evidence.contradiction_flags:
         components["negation_penalty"] = -w.negation_penalty
     if evidence.suspicious_claim_flags:
@@ -117,15 +123,18 @@ def compute_completeness_score(
 
 
 def count_corroboration_categories(evidence: EvidenceResult, config: ScoringConfig) -> tuple[int, list[str]]:
-    """Count INDEPENDENT corroboration categories behind an ICU claim.
+    """Count DISTINCT evidence categories behind an ICU claim.
 
-    Categories: equipment, procedure, staffing, anchored bed count, and
-    multi-field (evidence across >= 3 source fields). A fragment produced by
-    a pattern that also belongs to the explicit-claim group (e.g. ``critical
-    care`` matching both explicit and procedure) is NOT independent - one
-    marketing phrase must not corroborate itself. For LLM fragments
-    (pattern == "llm") the same idea applies via text identity plus the
-    group's non-explicit keyword patterns.
+    Categories: equipment, procedure, staffing, anchored bed count. These are
+    distinct evidence *types within the supplied record* - not independent
+    sources: the upstream pipeline generated capability/procedure/equipment
+    together in one content pass, so cross-field agreement is internal
+    consistency and deliberately NOT a category (see DECISIONS D18). A
+    fragment produced by a pattern that also belongs to the explicit-claim
+    group (e.g. ``critical care`` matching both explicit and procedure) does
+    not count - one marketing phrase must not corroborate itself. For LLM
+    fragments (pattern == "llm") the same idea applies via text identity
+    plus the group's non-explicit keyword patterns.
     """
     explicit_patterns = set(config.keywords.explicit_icu)
     explicit_texts = {f.text for f in evidence.supporting_text_fragments if f.group == "explicit_icu"}
@@ -145,8 +154,6 @@ def count_corroboration_categories(evidence: EvidenceResult, config: ScoringConf
             categories.append(group)
     if evidence.icu_bed_count is not None:
         categories.append("bed_count")
-    if evidence.explicit_icu_claim and len(evidence.supporting_fields) >= 3:
-        categories.append("multi_field")
     return len(categories), categories
 
 
@@ -188,16 +195,16 @@ def classify(
         if corroboration_categories < t.min_corroboration_categories:
             return (
                 CLASS_NEEDS_REVIEW,
-                f"Explicit claim backed by only {corroboration_categories} independent "
-                f"corroboration categor{'y' if corroboration_categories == 1 else 'ies'} "
-                f"({t.min_corroboration_categories} required for trust); a single phrase "
-                "must not corroborate itself.",
+                f"Explicit claim backed by only {corroboration_categories} distinct evidence "
+                f"categor{'y' if corroboration_categories == 1 else 'ies'} in the supplied "
+                f"record ({t.min_corroboration_categories} required for trust); a single "
+                "phrase must not corroborate itself.",
             )
         return (
             CLASS_TRUSTED,
             f"Evidence score {evidence_score} meets the trust threshold ({t.high_evidence}) "
-            f"with sufficient data and {corroboration_categories} independent corroboration "
-            "categories.",
+            f"with sufficient data and {corroboration_categories} distinct evidence "
+            "categories in the supplied record.",
         )
     if evidence_score <= t.low_evidence:
         return (

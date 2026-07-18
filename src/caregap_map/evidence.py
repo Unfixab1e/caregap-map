@@ -26,6 +26,10 @@ _MAX_FRAGMENT_LEN = 300
 
 # Groups that count as positive ICU evidence (negation is handled separately).
 _POSITIVE_GROUPS = ("explicit_icu", "equipment", "procedure", "staffing")
+# Scanned like positive groups, but specialty tags are CONTEXT: they never set
+# the explicit claim, never corroborate, and never contribute to multi-field
+# consistency (upstream, tags can derive from the facility NAME alone).
+_SCAN_GROUPS = (*_POSITIVE_GROUPS, "specialty_context")
 
 
 class EvidenceFragment(BaseModel):
@@ -52,6 +56,7 @@ class EvidenceResult(BaseModel):
     equipment_signals: list[str] = Field(default_factory=list)
     procedure_signals: list[str] = Field(default_factory=list)
     staffing_signals: list[str] = Field(default_factory=list)
+    specialty_context_signals: list[str] = Field(default_factory=list)
     supporting_text_fragments: list[EvidenceFragment] = Field(default_factory=list)
     missing_evidence: list[str] = Field(default_factory=list)
     contradiction_flags: list[str] = Field(default_factory=list)
@@ -110,11 +115,11 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
     kw = config.keywords
     texts = field_texts(record)
     result = EvidenceResult()
-    matched_patterns: dict[str, set[str]] = {g: set() for g in _POSITIVE_GROUPS}
+    matched_patterns: dict[str, set[str]] = {g: set() for g in _SCAN_GROUPS}
     supporting_fields: set[str] = set()
 
     negation_patterns = _compile(tuple(kw.negation))
-    group_patterns = {g: _compile(tuple(getattr(kw, g))) for g in _POSITIVE_GROUPS}
+    group_patterns = {g: _compile(tuple(getattr(kw, g))) for g in _SCAN_GROUPS}
 
     for field, items in texts.items():
         for item in items:
@@ -142,7 +147,8 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
                     m = pattern.search(item)
                     if m:
                         matched_patterns[group].add(pattern.pattern)
-                        supporting_fields.add(field)
+                        if group != "specialty_context":
+                            supporting_fields.add(field)
                         result.supporting_text_fragments.append(
                             EvidenceFragment(
                                 field=field,
@@ -167,6 +173,7 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
     result.equipment_signals = sorted(matched_patterns["equipment"])
     result.procedure_signals = sorted(matched_patterns["procedure"])
     result.staffing_signals = sorted(matched_patterns["staffing"])
+    result.specialty_context_signals = sorted(matched_patterns["specialty_context"])
     result.supporting_fields = sorted(supporting_fields)
 
     result.icu_subtypes = detect_icu_subtypes(result.supporting_text_fragments, config)
@@ -180,6 +187,31 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
     result.missing_evidence = build_missing_evidence(texts, result)
 
     return result
+
+
+def reclassify_specialty_context(
+    fragments: list[EvidenceFragment], config: ScoringConfig
+) -> list[EvidenceFragment]:
+    """Downgrade explicit-claim fragments that are only specialty tags.
+
+    Upstream, specialty tags can derive from the facility NAME alone
+    ("Trauma" -> criticalCareMedicine), so a tag like ``criticalCareMedicine``
+    is context, never an explicit ICU claim. Returns the fragments that were
+    reassigned (used by the LLM extractor, whose model may quote a tag as an
+    explicit claim; the deterministic pattern split handles this natively).
+    """
+    context_patterns = _compile(tuple(config.keywords.specialty_context))
+    explicit_patterns = _compile(tuple(config.keywords.explicit_icu))
+    reassigned = []
+    for frag in fragments:
+        if frag.group != "explicit_icu":
+            continue
+        if any(p.search(frag.text) for p in context_patterns) and not any(
+            p.search(frag.text) for p in explicit_patterns
+        ):
+            frag.group = "specialty_context"
+            reassigned.append(frag)
+    return reassigned
 
 
 def detect_icu_subtypes(fragments: list[EvidenceFragment], config: ScoringConfig) -> list[str]:

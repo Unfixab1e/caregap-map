@@ -49,14 +49,18 @@ claimed, evidence never looks at how much is filled in.
 |---|---|
 | Self-contradictory record | Needs Human Review |
 | Completeness below judgeability threshold | Insufficient Data |
-| High evidence + explicit claim + ≥2 independent corroboration categories | Trusted ICU Coverage |
+| High evidence + explicit claim + ≥2 distinct evidence categories | Trusted ICU Coverage |
 | High evidence but suspicious claims, no explicit claim, or insufficient corroboration | Needs Human Review |
 | Low evidence, sufficient data | Likely Medical Gap |
 | Mid-band (ambiguous) evidence | Needs Human Review |
 
-Corroboration categories: equipment, procedure, staffing, anchored ICU bed count,
-multi-field evidence — where a signal produced by the same pattern as the explicit claim
-itself never counts (D14). ICU subtypes (NICU/PICU/ICCU/MICU/SICU) are detected and
+Evidence categories: equipment, procedure, staffing, anchored ICU bed count — distinct
+evidence *types within the supplied record*, not independent sources (the upstream
+pipeline generated `capability`/`procedure`/`equipment` together in one pass, so
+cross-field agreement counts only as internal consistency; D14/D18). A signal produced by
+the same pattern as the explicit claim itself never counts. Specialty tags such as
+`criticalCareMedicine` are context (they can derive from the facility name alone) and
+never create an ICU claim. ICU subtypes (NICU/PICU/ICCU/MICU/SICU) are detected and
 surfaced; specialised-subtype-only evidence is never displayed as general adult ICU (D16).
 
 Region-level statuses use separate wording ("Trusted ICU evidence found", "Potential
@@ -73,8 +77,8 @@ JSON file pointed to by `CAREGAP_SCORING_CONFIG` (see DECISIONS.md D5).
 3. Clearly distinguish likely medical gaps from data deserts.
 4. Select a risky region.
 5. View the facilities behind the regional result.
-6. Open a facility and inspect: original claims, exact supporting sentences, missing
-   evidence, contradictions, suspicious claims, score breakdown.
+6. Open a facility and inspect: supplied-record claims, exact supporting fragments,
+   missing evidence, contradictions, suspicious claims, score breakdown.
 7. Save a reviewer note or planning scenario
    (e.g. *"Verify these facilities before classifying this district as an ICU desert."*).
 

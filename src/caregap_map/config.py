@@ -145,7 +145,23 @@ class EvidenceKeywords(BaseModel):
         r"\bsicu\b",
         r"intensive\s+care",
         r"critical\s+care",
-        r"criticalcare",  # camelCase token used in the specialties field
+    ]
+    # Specialty-tag tokens that provide CONTEXT, never an explicit ICU claim.
+    # Provenance: the upstream specialty classifier maps facility NAMES to
+    # tags (e.g. "Trauma" in a name -> criticalCareMedicine), so these tokens
+    # can exist without any ICU statement in the source content.
+    specialty_context: list[str] = [
+        r"criticalcare",  # camelCase criticalCareMedicine token in `specialties`
+    ]
+    # Phrases indicating the fragment may describe ANOTHER organization
+    # (directory listings, referral/empanelment lists, partner pages) - the
+    # upstream pipeline extracted organizations from multi-facility pages.
+    cross_organization: list[str] = [
+        r"\blisted\s+(as|in|under)\b",
+        r"\bdirectory\b",
+        r"\breferral\s+hospital\b",
+        r"\bempanell?ed\b",
+        r"\bpartner\s+(hospital|organi[sz]ation)\b",
     ]
     equipment: list[str] = [
         r"ventilator",
@@ -236,7 +252,15 @@ class EvidenceWeights(BaseModel):
     procedure: int = 15
     capacity: int = 10  # an extractable ICU bed count
     staffing: int = 10
-    multi_field_bonus: int = 10  # explicit claim corroborated across >= 3 distinct fields
+    # Specialty-tag context (e.g. criticalCareMedicine) when NO explicit claim
+    # exists - lands the record in the ambiguous review band, never trust.
+    specialty_context: int = 20
+    # Cross-field consistency: explicit claim appears across >= 3 record
+    # fields. NOTE (provenance): capability/procedure/equipment were generated
+    # together by ONE upstream extraction pass, so this measures internal
+    # consistency of the supplied record - it is NOT independent confirmation
+    # and does not count toward corroboration categories.
+    multi_field_bonus: int = 10
     # Penalties (subtracted).
     negation_penalty: int = 40
     suspicious_penalty: int = 15

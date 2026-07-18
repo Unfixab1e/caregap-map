@@ -24,13 +24,17 @@ is allowed to affect the score."*
    > data desert — and the tool never conflates the two."
 
 3. **(0:30–1:00) Facility drilldown.** Open one 🟢 trusted (or 🟡 review) facility.
-   - point at the **exact source fragment** ("22-bed Level II Intensive Care Unit …")
+   - point at the **exact fragment from the supplied record** ("22-bed Level II
+     Intensive Care Unit …") — and say what layer this is: *"these fields were
+     generated upstream from website text and images; we verify against the supplied
+     record, not the hospital's website"*
    - **extractor provenance** (deterministic / LLM — LLM quotes are verified verbatim
-     against the source; hallucinated quotes are dropped and flagged)
+     against the supplied record; hallucinated quotes are dropped and flagged)
    - **ICU subtype** ("NICU only — no general adult ICU claim" where applicable)
-   - **independent corroboration** count ("a marketing phrase can't corroborate itself")
+   - **distinct evidence categories** count ("a marketing phrase can't corroborate
+     itself — and cross-field agreement is consistency, not independent confirmation")
    - **missing evidence** list and validator flags
-   > "Every score is traceable to the sentence that produced it. No black box."
+   > "Every score is traceable to the supplied-record text that produced it. No black box."
 
 4. **(1:00–1:20) Reviewer note.** On the district, save:
    > *"Verify these facilities before classifying this district as an ICU desert."*

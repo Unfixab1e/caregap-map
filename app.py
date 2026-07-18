@@ -243,7 +243,7 @@ def notes_panel(scope_type: str, scope_id: str, context: str) -> None:
 
 
 def facility_detail(row: pd.Series) -> None:
-    """Original record, exact evidence fragments, scores and flags."""
+    """Supplied record, exact evidence fragments, scores and flags."""
     st.subheader(row["name"] if pd.notna(row["name"]) else "(unnamed facility)")
     status_banner(row["classification"], row["classification_reason"])
 
@@ -261,7 +261,12 @@ def facility_detail(row: pd.Series) -> None:
     left, right = st.columns([1, 1])
 
     with left:
-        st.markdown("#### Original record")
+        st.markdown("#### Supplied record")
+        st.caption(
+            "Fields below are structured claims generated upstream from website text "
+            "and images by the dataset's extraction pipeline - not verified hospital "
+            "statements."
+        )
         place = ", ".join(
             str(v)
             for v in [row.get("address_line1"), row.get("address_city"), row.get("state_final")]
@@ -299,7 +304,7 @@ def facility_detail(row: pd.Series) -> None:
         corroboration = json.loads(row.get("corroboration_categories_json") or "[]")
         min_corr = load_scoring_config().thresholds.min_corroboration_categories
         st.markdown(
-            f"**Independent corroboration:** "
+            f"**Distinct evidence categories (within the supplied record):** "
             f"{', '.join(corroboration) if corroboration else 'none'} "
             f"({len(corroboration)} of {min_corr} required for Trusted)"
         )
@@ -333,7 +338,7 @@ def facility_detail(row: pd.Series) -> None:
         else:
             st.caption("Nothing missing.")
 
-    st.markdown("#### Evidence fragments (exact original text)")
+    st.markdown("#### Evidence fragments (exact text from the supplied record)")
     fragments = json.loads(row["evidence_fragments_json"])
     if fragments:
         by_group: dict[str, list[dict]] = {}

@@ -166,3 +166,50 @@ provenance → verified fragments → subtype detection → validator flags → 
 → classification → regional aggregation) directly in the UI, and every stage is stored in
 the processed Parquet. MLflow run/trace logging is deferred until after the live
 deployment is stable, per the milestone priority order.
+
+## D18 — Dataset-generation provenance: generated fields are one source, not many
+
+Inspection of the challenge's dataset-generation prompt files (facility_and_ngo_fields.py,
+free_form.py, medical_specialties.py, organization_extraction.py — referenced, not
+committed) established:
+
+- `procedure`, `equipment` and `capability` are filled by **one extraction pass** over
+  website text **and images** (equipment in photos, signage). Agreement across these
+  fields is *cross-field consistency of one generated record*, never independent
+  sources; some claims may have no original webpage sentence at all (image-derived).
+- `capacity` means **total inpatient beds** and `numberDoctors` means **total doctors** —
+  already treated that way here (bed-count anchoring; doctors only feed completeness).
+- `description` is itself a generated summary; the upstream address prompt **mandates
+  geography inference** from URL domains/phone numbers — our PIN-first geography with
+  recorded provenance stands.
+- The specialty classifier maps facility **names** to tags ("Trauma" →
+  criticalCareMedicine), so a `criticalCareMedicine` tag proves nothing about an ICU.
+- The organization-extraction prompt shows multi-facility pages (directories, referral/
+  partner lists) feed the pipeline, so records can carry other organizations' content.
+
+**Decisions:**
+1. The camelCase specialty token is no longer an explicit ICU claim: new
+   `specialty_context` signal group (weight 20, counted only when no explicit claim
+   exists → lands in the review band, never trust; applied identically to LLM output).
+2. Cross-field agreement is removed from the Trusted corroboration categories (now:
+   equipment / procedure / staffing / anchored bed count — distinct evidence *types
+   within the supplied record*); the small score bonus remains but is displayed as
+   `cross_field_consistency`, and user-facing wording says "distinct evidence categories
+   in the supplied record", not "independent corroboration".
+3. New `directory_or_partner_content_detected` suspicious flag when ICU-relevant
+   fragments contain directory/referral/partner phrases → routes would-be Trusted to
+   review.
+4. UI/docs wording layer-corrected: fragments are exact quotes **from the supplied
+   facility record** (model-generated upstream), never "original hospital website
+   sentences" or verified clinical facts.
+
+The challenge utility files themselves are NOT imported (unclear redistribution rights,
+one has a nonfunctional `fdr.config` dependency; their value is provenance, not code).
+
+**Before/after on 10,077 facilities:** Trusted 535 → 203; Needs Human Review
+2,535 → 2,867; Likely Medical Gap and Insufficient Data unchanged (6,890 / 117).
+Explicit ICU claims dropped 3,010 → 2,514 — roughly 500 records' only "claim" was the
+name-derived specialty tag. Every demotion went to review, none to gap (no manufactured
+deserts). This is deliberately strict against false Trusted; the human-labelled
+evaluation (evals/) is the instrument for relaxing it with ground truth
+(`min_corroboration_categories`, `specialty_context` weight are config values).

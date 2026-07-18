@@ -35,6 +35,7 @@ from .evidence import (
     detect_icu_subtypes,
     extract_icu_bed_count,
     field_texts,
+    reclassify_specialty_context,
 )
 
 _POSITIVE_GROUPS = ("explicit_icu", "equipment", "procedure", "staffing")
@@ -44,19 +45,29 @@ SYSTEM_PROMPT = """\
 You extract ICU (intensive care) capability evidence from Indian health-facility records.
 You are a data-quality assistant, not a medical judge: report only what the text claims.
 
+The provided fields are structured claims that were generated upstream from website
+text AND images by another extraction system; the procedure, equipment and capability
+fields were produced together in one pass. They are supplied-record claims, not
+verified hospital statements.
+
 Rules:
 1. Quote supporting text EXACTLY as written in the provided fields. Never paraphrase,
    translate, fix spelling, or merge sentences. A quote must be a contiguous excerpt.
 2. Only quote text relevant to ICU / intensive care / critical care capability:
-   explicit ICU claims, ICU-relevant equipment (ventilators, ECMO, monitors, BiPAP...),
-   ICU-relevant procedures (mechanical ventilation, intubation, resuscitation...),
-   critical-care staffing (intensivists, ICU nurses...).
+   explicit ICU claims (specialised units, care-level or program claims),
+   ICU-relevant equipment (physical devices/infrastructure: ventilators, ECMO,
+   monitors, BiPAP...), ICU-relevant procedures (clinical interventions/diagnostics:
+   mechanical ventilation, intubation, resuscitation...), critical-care staffing
+   (intensivists, ICU nurses...).
 3. If the text DENIES ICU capability (e.g. "has no ICU"), quote it with group "negation".
 4. If one quote supports several groups (e.g. "NICU with ventilator support" is both an
    explicit ICU claim and equipment evidence), repeat the quote once per group.
 5. Report an ICU bed count only if a number of ICU beds is stated in the text.
 6. List claims that are too vague to categorise under unclear_claims.
 7. Do not infer capability from the facility name, size, or reputation.
+8. camelCase specialty tags (e.g. criticalCareMedicine) are classifier labels that can
+   derive from the facility NAME alone - never quote them as explicit ICU claims.
+9. The same fact repeated across fields is internal consistency, not extra evidence.
 """
 
 # Response contract for OpenAI structured outputs (strict mode).
@@ -193,7 +204,9 @@ def is_informative_fragment(text: str, config: ScoringConfig) -> bool:
     if len(text.split()) >= 2:
         return True
     kw = config.keywords
-    patterns = _compile_keywords(tuple(kw.explicit_icu + kw.equipment + kw.procedure + kw.staffing))
+    patterns = _compile_keywords(
+        tuple(kw.explicit_icu + kw.equipment + kw.procedure + kw.staffing + kw.specialty_context)
+    )
     return any(p.search(text) for p in patterns)
 
 
@@ -281,10 +294,16 @@ class LlmEvidenceExtractor:
             # Verified but meaningless quotes (e.g. "True" on corrupted rows).
             result.suspicious_claim_flags.append(f"llm_low_information_fragments_dropped:{low_information}")
 
-        # A claim only counts when backed by a verified explicit fragment.
-        result.explicit_icu_claim = bool(payload.get("explicit_icu_claim")) and bool(
-            matched_groups["explicit_icu"]
-        )
+        # Specialty tags quoted as explicit claims are downgraded to context
+        # (same rule as the deterministic extractor - a tag can derive from
+        # the facility name alone upstream).
+        reassigned = reclassify_specialty_context(result.supporting_text_fragments, self._config)
+        result.specialty_context_signals = [f.text[:80] for f in reassigned]
+
+        # A claim only counts when backed by a verified explicit fragment
+        # that survived reclassification.
+        has_explicit_fragment = any(f.group == "explicit_icu" for f in result.supporting_text_fragments)
+        result.explicit_icu_claim = bool(payload.get("explicit_icu_claim")) and has_explicit_fragment
         result.equipment_signals = matched_groups["equipment"]
         result.procedure_signals = matched_groups["procedure"]
         result.staffing_signals = matched_groups["staffing"]
