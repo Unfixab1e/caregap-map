@@ -1,0 +1,105 @@
+# CareGap Map 🏥
+
+**A trust layer for ICU coverage planning in India.**
+Databricks Data Legend challenge — Medical Desert Planner mission.
+
+CareGap Map helps NGO and public-health planners tell a **likely real ICU gap** apart from a
+gap caused by **incomplete data**. The system never treats *"no reliable ICU evidence"* as
+*"no ICU exists"* — facilities and regions land in one of four states:
+
+| | State | Meaning |
+|---|---|---|
+| 🟢 | Trusted ICU Coverage | strong evidence, sufficient data |
+| 🔴 | Likely Medical Gap | well-documented record, no ICU evidence |
+| ⚪ | Insufficient Data / Data Desert | cannot be judged — *unknown*, not a gap |
+| 🟡 | Needs Human Review | contradictory, suspicious or ambiguous evidence |
+
+Every classification is traceable to the **exact original text fragments** that produced it.
+See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the frozen scope and
+[DECISIONS.md](DECISIONS.md) for design decisions.
+
+## Quickstart
+
+Requires Python ≥ 3.11.
+
+```bash
+# 1. Install (editable, with dev tools)
+pip install -e ".[dev]"
+
+# 2. Put the raw challenge files in place (never committed):
+#    data/raw/facilities.csv
+#    data/raw/india_post_pincode_directory.csv
+#    data/raw/nfhs_5_district_health_indicators.csv
+
+# 3. Validate & profile the raw data (writes reports/profile_report.json)
+python scripts/profile_data.py
+
+# 4. Build processed Parquet outputs (writes data/processed/*)
+python scripts/build_processed_data.py
+
+# 5. Run the tests
+python -m pytest
+
+# 6. Launch the app
+streamlit run app.py
+```
+
+`pip install -e .` is optional for running the scripts and app — both bootstrap
+`src/` onto `sys.path` — but recommended for development.
+
+## What the app does
+
+1. Capability is fixed to **ICU**; pick a state and optionally a district.
+2. Read the regional verdict: trust-weighted coverage, judgeable-record share, and the
+   four-state breakdown — **medical gaps and data deserts are never conflated**.
+3. Open the facility table behind the regional result, filter by classification.
+4. Drill into a facility: original record, exact evidence fragments, score breakdown,
+   validator flags, missing evidence.
+5. Save reviewer notes on a facility, district or state (stored in `data/reviews.db`).
+
+> All signals reflect **dataset consistency, not verified clinical capability**.
+> This tool makes no medical claims.
+
+## Project layout
+
+```
+app.py                     Streamlit UI (presentation only)
+app.yaml                   Databricks Apps launch config
+src/caregap_map/
+  config.py                ALL keywords, weights, thresholds, paths
+  cleaning.py              null-like handling, parsing, state/PIN normalisation
+  geography.py             PIN-directory aggregation + geo assignment
+  evidence.py              deterministic ICU evidence extraction (fragments!)
+  validator.py             dataset-consistency checks
+  scoring.py               independent evidence & completeness scores + classes
+  aggregation.py           state/district rollups, gap-vs-desert logic
+  data_access.py           DataSource protocol (local now, Databricks later)
+  persistence.py           ReviewStore protocol (SQLite implementation)
+scripts/
+  profile_data.py          raw-data validation & profiling report
+  build_processed_data.py  reproducible cleaning + scoring pipeline
+tests/                     unit + app smoke tests (synthetic fixtures)
+data/raw|processed         git-ignored challenge data
+data/samples               tiny synthetic sample (committed, no real data)
+```
+
+## Configuration
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `CAREGAP_DATA_DIR` | root of `raw/` and `processed/` | `data` |
+| `CAREGAP_SCORING_CONFIG` | JSON overriding any scoring weight/threshold | built-ins |
+
+See [.env.example](.env.example). Thresholds are documented in
+[DECISIONS.md](DECISIONS.md) (D4, D5, D7).
+
+## Roadmap
+
+- **Databricks deployment:** implement `DatabricksDataSource` against Unity Catalog
+  tables, deploy via `app.yaml` as a Databricks App.
+- **Optional LLM extraction:** an OpenAI-backed extractor implementing the same interface
+  as the deterministic one (sentence-level evidence selection, unclear-claim
+  categorisation); its output still passes deterministic validation.
+- **NFHS join:** district-level health context with recorded match confidence.
+
+See [TASKS.md](TASKS.md) for the current status.

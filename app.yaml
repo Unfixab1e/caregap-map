@@ -1,0 +1,11 @@
+# Databricks Apps configuration for CareGap Map.
+# The app expects processed Parquet data; on Databricks, point
+# CAREGAP_DATA_DIR at a volume containing processed/ outputs
+# (or swap LocalDataSource for the DatabricksDataSource adapter
+# in the next milestone).
+command: ["streamlit", "run", "app.py"]
+env:
+  - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS
+    value: "false"
+  - name: CAREGAP_DATA_DIR
+    value: "data"
