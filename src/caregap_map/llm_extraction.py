@@ -229,6 +229,104 @@ def locate_fragment(quote: str, source: str) -> str | None:
     return match.group(0) if match else None
 
 
+def payload_to_evidence(
+    payload: Mapping[str, Any],
+    record: Mapping[str, Any],
+    config: ScoringConfig,
+    extractor_name: str = "llm",
+) -> EvidenceResult:
+    """Convert a model payload into a verified :class:`EvidenceResult`.
+
+    Shared by the OpenAI extractor and the offline Codex pipeline so every
+    model-backed path passes the IDENTICAL guardrails: verbatim fragment
+    anchoring, low-information rejection, specialty-tag reclassification,
+    explicit-claim gating, bed-count anchoring, deterministic subtype
+    detection and consistency checks. Nothing the model says is taken on
+    faith. (The ``llm_*`` flag names are kept for all extractors so
+    comparisons across extractors line up.)
+    """
+    texts = field_texts(record)
+    result = EvidenceResult(extractor=extractor_name)
+
+    matched_groups: dict[str, list[str]] = {g: [] for g in _POSITIVE_GROUPS}
+    supporting_fields: set[str] = set()
+    dropped = 0
+    low_information = 0
+
+    for frag in payload.get("fragments", []):
+        field = frag.get("field")
+        group = frag.get("group")
+        quote = frag.get("quote", "")
+        if group not in _VALID_GROUPS or field not in texts:
+            dropped += 1
+            continue
+        located = next((loc for item in texts[field] if (loc := locate_fragment(quote, item))), None)
+        if located is None:
+            dropped += 1
+            continue
+        if not is_informative_fragment(located, config):
+            low_information += 1
+            continue
+        result.supporting_text_fragments.append(
+            EvidenceFragment(field=field, group=group, pattern="llm", text=located)
+        )
+        if group == "negation":
+            if "negated_icu_mention" not in result.contradiction_flags:
+                result.contradiction_flags.append("negated_icu_mention")
+        else:
+            matched_groups[group].append(located[:80])
+            supporting_fields.add(field)
+
+    if dropped:
+        # The model quoted text that does not exist in the record.
+        result.suspicious_claim_flags.append(f"llm_unverified_fragments_dropped:{dropped}")
+    if low_information:
+        # Verified but meaningless quotes (e.g. "True" on corrupted rows).
+        result.suspicious_claim_flags.append(f"llm_low_information_fragments_dropped:{low_information}")
+
+    # Specialty tags quoted as explicit claims are downgraded to context
+    # (same rule as the deterministic extractor - a tag can derive from
+    # the facility name alone upstream).
+    reassigned = reclassify_specialty_context(result.supporting_text_fragments, config)
+    result.specialty_context_signals = [f.text[:80] for f in reassigned]
+
+    # A claim only counts when backed by a verified explicit fragment
+    # that survived reclassification.
+    has_explicit_fragment = any(f.group == "explicit_icu" for f in result.supporting_text_fragments)
+    result.explicit_icu_claim = bool(payload.get("explicit_icu_claim")) and has_explicit_fragment
+    result.equipment_signals = matched_groups["equipment"]
+    result.procedure_signals = matched_groups["procedure"]
+    result.staffing_signals = matched_groups["staffing"]
+    result.supporting_fields = sorted(supporting_fields)
+
+    # A bed count is believed only when it can be re-derived from ONE
+    # verified fragment that contains the number together with bed and
+    # ICU/intensive-care context (deterministic anchoring, shared with
+    # the baseline extractor). A number that merely co-occurs with ICU
+    # across fragments ("10 ventilators" + "ICU available") never counts.
+    anchored = extract_icu_bed_count([f.text for f in result.supporting_text_fragments], config)
+    payload_count = payload.get("icu_bed_count")
+    if anchored is not None:
+        result.icu_bed_count = anchored
+        result.capacity_signal = True
+        if isinstance(payload_count, int) and payload_count != anchored:
+            result.suspicious_claim_flags.append("llm_bed_count_mismatch")
+    elif isinstance(payload_count, int):
+        result.suspicious_claim_flags.append("llm_bed_count_unanchored")
+
+    # Subtype detection runs deterministically over the VERIFIED fragments,
+    # so every extractor shares identical subtype semantics (model-proposed
+    # subtypes are provenance only, never trusted for scoring).
+    result.icu_subtypes = detect_icu_subtypes(result.supporting_text_fragments, config)
+
+    result.unclear_claims = [str(c) for c in payload.get("unclear_claims", [])][:10]
+    result.extraction_explanation = str(payload.get("explanation", "")) or None
+
+    apply_consistency_checks(record, result)
+    result.missing_evidence = build_missing_evidence(texts, result)
+    return result
+
+
 class LlmEvidenceExtractor:
     """Model-backed evidence extractor with verified, source-anchored quotes."""
 
@@ -244,9 +342,9 @@ class LlmEvidenceExtractor:
         extractor.
         """
         texts = field_texts(record)
-        result = EvidenceResult(extractor="llm")
 
         if not any(texts.values()):
+            result = EvidenceResult(extractor="llm")
             result.missing_evidence = build_missing_evidence(texts, result)
             return result
 
@@ -258,79 +356,4 @@ class LlmEvidenceExtractor:
         except json.JSONDecodeError as exc:
             raise LlmExtractionError(f"Model response is not valid JSON: {exc}") from exc
 
-        matched_groups: dict[str, list[str]] = {g: [] for g in _POSITIVE_GROUPS}
-        supporting_fields: set[str] = set()
-        dropped = 0
-        low_information = 0
-
-        for frag in payload.get("fragments", []):
-            field = frag.get("field")
-            group = frag.get("group")
-            quote = frag.get("quote", "")
-            if group not in _VALID_GROUPS or field not in texts:
-                dropped += 1
-                continue
-            located = next((loc for item in texts[field] if (loc := locate_fragment(quote, item))), None)
-            if located is None:
-                dropped += 1
-                continue
-            if not is_informative_fragment(located, self._config):
-                low_information += 1
-                continue
-            result.supporting_text_fragments.append(
-                EvidenceFragment(field=field, group=group, pattern="llm", text=located)
-            )
-            if group == "negation":
-                if "negated_icu_mention" not in result.contradiction_flags:
-                    result.contradiction_flags.append("negated_icu_mention")
-            else:
-                matched_groups[group].append(located[:80])
-                supporting_fields.add(field)
-
-        if dropped:
-            # The model quoted text that does not exist in the record.
-            result.suspicious_claim_flags.append(f"llm_unverified_fragments_dropped:{dropped}")
-        if low_information:
-            # Verified but meaningless quotes (e.g. "True" on corrupted rows).
-            result.suspicious_claim_flags.append(f"llm_low_information_fragments_dropped:{low_information}")
-
-        # Specialty tags quoted as explicit claims are downgraded to context
-        # (same rule as the deterministic extractor - a tag can derive from
-        # the facility name alone upstream).
-        reassigned = reclassify_specialty_context(result.supporting_text_fragments, self._config)
-        result.specialty_context_signals = [f.text[:80] for f in reassigned]
-
-        # A claim only counts when backed by a verified explicit fragment
-        # that survived reclassification.
-        has_explicit_fragment = any(f.group == "explicit_icu" for f in result.supporting_text_fragments)
-        result.explicit_icu_claim = bool(payload.get("explicit_icu_claim")) and has_explicit_fragment
-        result.equipment_signals = matched_groups["equipment"]
-        result.procedure_signals = matched_groups["procedure"]
-        result.staffing_signals = matched_groups["staffing"]
-        result.supporting_fields = sorted(supporting_fields)
-
-        # A bed count is believed only when it can be re-derived from ONE
-        # verified fragment that contains the number together with bed and
-        # ICU/intensive-care context (deterministic anchoring, shared with
-        # the baseline extractor). A number that merely co-occurs with ICU
-        # across fragments ("10 ventilators" + "ICU available") never counts.
-        anchored = extract_icu_bed_count([f.text for f in result.supporting_text_fragments], self._config)
-        payload_count = payload.get("icu_bed_count")
-        if anchored is not None:
-            result.icu_bed_count = anchored
-            result.capacity_signal = True
-            if isinstance(payload_count, int) and payload_count != anchored:
-                result.suspicious_claim_flags.append("llm_bed_count_mismatch")
-        elif isinstance(payload_count, int):
-            result.suspicious_claim_flags.append("llm_bed_count_unanchored")
-
-        # Subtype detection runs deterministically over the VERIFIED fragments,
-        # so both extractors share identical subtype semantics.
-        result.icu_subtypes = detect_icu_subtypes(result.supporting_text_fragments, self._config)
-
-        result.unclear_claims = [str(c) for c in payload.get("unclear_claims", [])][:10]
-        result.extraction_explanation = str(payload.get("explanation", "")) or None
-
-        apply_consistency_checks(record, result)
-        result.missing_evidence = build_missing_evidence(texts, result)
-        return result
+        return payload_to_evidence(payload, record, self._config, extractor_name="llm")
