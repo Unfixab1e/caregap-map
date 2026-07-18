@@ -26,7 +26,9 @@ from caregap_map.cleaning import (  # noqa: E402
     normalize_state,
     parse_coordinates,
 )
-from caregap_map.config import EVIDENCE_TEXT_FIELDS, DataPaths  # noqa: E402
+from caregap_map.config import EVIDENCE_TEXT_FIELDS, DataPaths, load_env_file  # noqa: E402
+
+load_env_file()
 
 EXPECTED_FILES = {
     "facilities": ("facilities.csv", 10_088, 51),

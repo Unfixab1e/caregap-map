@@ -113,15 +113,22 @@ implements the same interface as the deterministic extractor. Guardrails:
 - an ICU claim or bed count only counts when backed by a verified fragment;
 - scoring, validation and classification remain **fully deterministic** for both extractors.
 
-Compare it against the baseline on a stratified sample (needs `OPENAI_API_KEY` and
-`pip install -e ".[llm]"`):
+Compare it against the baseline on a stratified sample (`pip install -e ".[llm]"`,
+key in `.env` as `OPENAI_API_KEY=...` — the scripts load `.env` automatically):
 
 ```bash
 python scripts/run_llm_extraction.py --limit 24
 ```
 
-Outputs `data/processed/llm_comparison.json` (agreement metrics) and
-`facilities_scored_llm.parquet`. The app continues to display the deterministic results.
+Outputs `data/processed/llm_comparison.json` (agreement metrics, measured token usage,
+estimated cost) and `facilities_scored_llm.parquet`. The app continues to display the
+deterministic results.
+
+**Cost guardrails** (for the challenge's limited API credit): the script prints an
+estimated cost before calling the API, refuses runs estimated above **$2** unless you
+pass `--yes`, reports live spend per record, and gpt-4o-mini keeps even a full 10k-record
+run in the low single-digit dollars. Prices used for the estimate are configurable in
+`LlmConfig`.
 
 ## Roadmap
 

@@ -28,8 +28,11 @@ from caregap_map.config import (  # noqa: E402
     CLASS_TRUSTED,
     REGION_DATA_DESERT,
     default_paths,
+    load_env_file,
     load_scoring_config,
 )
+
+load_env_file()  # .env overrides nothing that is already in the environment
 from caregap_map.data_access import MissingDataError, get_data_source  # noqa: E402
 from caregap_map.persistence import ReviewNote, SqliteReviewStore  # noqa: E402
 

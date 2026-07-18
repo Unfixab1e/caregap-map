@@ -232,6 +232,10 @@ class LlmConfig(BaseModel):
     temperature: float = 0.0
     max_output_tokens: int = 2000
     request_timeout_s: float = 60.0
+    # Price estimates (USD per 1M tokens) used ONLY for cost reporting and
+    # the pre-run budget guard; update to your model's current pricing.
+    input_cost_per_mtok: float = 0.15
+    output_cost_per_mtok: float = 0.60
 
 
 class ScoringConfig(BaseModel):
@@ -244,6 +248,31 @@ class ScoringConfig(BaseModel):
     llm: LlmConfig = Field(default_factory=LlmConfig)
     # A record with fewer than this many populated key fields is "suspiciously sparse".
     sparse_record_min_fields: int = 2
+
+
+def load_env_file(path: str | Path = ".env") -> int:
+    """Load ``KEY=VALUE`` lines from a .env file into ``os.environ``.
+
+    Deliberately tiny (no python-dotenv dependency): comments and blank
+    lines are skipped, surrounding quotes are stripped, and existing
+    environment variables are NEVER overridden - the process environment
+    always wins. Returns the number of variables set. Missing file is fine.
+    """
+    env_path = Path(path)
+    if not env_path.exists():
+        return 0
+    loaded = 0
+    for line in env_path.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded += 1
+    return loaded
 
 
 def load_scoring_config(path: str | Path | None = None) -> ScoringConfig:

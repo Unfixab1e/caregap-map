@@ -110,8 +110,20 @@ class LlmClient(Protocol):
     def complete_json(self, system: str, user: str, schema: dict, config: LlmConfig) -> str: ...
 
 
+def estimate_cost_usd(prompt_tokens: int, completion_tokens: int, config: LlmConfig) -> float:
+    """Rough USD cost from token counts and the configured per-1M prices."""
+    return (
+        prompt_tokens * config.input_cost_per_mtok + completion_tokens * config.output_cost_per_mtok
+    ) / 1_000_000
+
+
 class OpenAiClient:
-    """Thin adapter over the OpenAI SDK implementing :class:`LlmClient`."""
+    """Thin adapter over the OpenAI SDK implementing :class:`LlmClient`.
+
+    Tracks cumulative token usage so callers can report and cap spend
+    (``total_prompt_tokens`` / ``total_completion_tokens`` /
+    :meth:`estimated_cost_usd`).
+    """
 
     def __init__(self, api_key: str | None = None) -> None:
         try:
@@ -123,6 +135,11 @@ class OpenAiClient:
             ) from exc
         # Falls back to the OPENAI_API_KEY environment variable.
         self._client = openai.OpenAI(api_key=api_key) if api_key else openai.OpenAI()
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+
+    def estimated_cost_usd(self, config: LlmConfig) -> float:
+        return estimate_cost_usd(self.total_prompt_tokens, self.total_completion_tokens, config)
 
     def complete_json(self, system: str, user: str, schema: dict, config: LlmConfig) -> str:
         response = self._client.chat.completions.create(
@@ -139,6 +156,10 @@ class OpenAiClient:
                 {"role": "user", "content": user},
             ],
         )
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            self.total_prompt_tokens += usage.prompt_tokens or 0
+            self.total_completion_tokens += usage.completion_tokens or 0
         content = response.choices[0].message.content
         if not content:
             raise LlmExtractionError("Model returned an empty response.")

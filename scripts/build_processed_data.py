@@ -37,7 +37,9 @@ from caregap_map.cleaning import (  # noqa: E402
     parse_coordinates,
     parse_int_safe,
 )
-from caregap_map.config import DataPaths, load_scoring_config  # noqa: E402
+from caregap_map.config import DataPaths, load_env_file, load_scoring_config  # noqa: E402
+
+load_env_file()
 from caregap_map.data_access import LocalDataSource  # noqa: E402
 from caregap_map.geography import aggregate_pin_directory, assign_geography  # noqa: E402
 from caregap_map.scoring import score_dataframe  # noqa: E402

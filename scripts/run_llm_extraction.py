@@ -30,9 +30,20 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from caregap_map.config import DataPaths, load_scoring_config  # noqa: E402
-from caregap_map.llm_extraction import LlmEvidenceExtractor, OpenAiClient  # noqa: E402
+from caregap_map.config import DataPaths, load_env_file, load_scoring_config  # noqa: E402
+from caregap_map.llm_extraction import (  # noqa: E402
+    LlmEvidenceExtractor,
+    OpenAiClient,
+    estimate_cost_usd,
+)
 from caregap_map.scoring import score_facility  # noqa: E402
+
+# Rough per-record token estimate for the pre-run budget preview (the real
+# usage is measured from API responses and reported in the summary).
+EST_INPUT_TOKENS_PER_RECORD = 1_800
+EST_OUTPUT_TOKENS_PER_RECORD = 500
+# Runs estimated above this need an explicit --yes (protects a small credit).
+COST_CONFIRM_THRESHOLD_USD = 2.00
 
 
 def stratified_sample(scored: pd.DataFrame, limit: int) -> pd.DataFrame:
@@ -48,10 +59,16 @@ def main() -> int:
     parser.add_argument("--state", default=None, help="Restrict the sample to one state")
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--model", default=None, help="Override the configured model name")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help=f"Confirm runs whose estimated cost exceeds ${COST_CONFIRM_THRESHOLD_USD:.2f}",
+    )
     args = parser.parse_args()
 
+    load_env_file()  # picks up OPENAI_API_KEY from .env (never overrides real env)
     if not os.environ.get("OPENAI_API_KEY"):
-        print("ERROR: OPENAI_API_KEY is not set; refusing to run.", file=sys.stderr)
+        print("ERROR: OPENAI_API_KEY is not set (env or .env); refusing to run.", file=sys.stderr)
         return 1
 
     paths = DataPaths(data_dir=Path(args.data_dir))
@@ -71,8 +88,28 @@ def main() -> int:
             return 1
 
     sample = stratified_sample(scored, args.limit)
-    extractor = LlmEvidenceExtractor(OpenAiClient(), config)
-    print(f"Scoring {len(sample)} facilities with model {config.llm.model} ...")
+
+    est_cost = estimate_cost_usd(
+        len(sample) * EST_INPUT_TOKENS_PER_RECORD,
+        len(sample) * EST_OUTPUT_TOKENS_PER_RECORD,
+        config.llm,
+    )
+    print(
+        f"Planned: {len(sample)} facilities x {config.llm.model} "
+        f"-> estimated cost ~${est_cost:.2f} "
+        f"(at ${config.llm.input_cost_per_mtok}/M in, ${config.llm.output_cost_per_mtok}/M out)"
+    )
+    if est_cost > COST_CONFIRM_THRESHOLD_USD and not args.yes:
+        print(
+            f"ERROR: estimated cost ${est_cost:.2f} exceeds the "
+            f"${COST_CONFIRM_THRESHOLD_USD:.2f} guard. Re-run with --yes to confirm, "
+            "or lower --limit.",
+            file=sys.stderr,
+        )
+        return 1
+
+    client = OpenAiClient()
+    extractor = LlmEvidenceExtractor(client, config)
 
     rows, errors = [], 0
     for _, record in sample.iterrows():
@@ -107,7 +144,11 @@ def main() -> int:
                 "llm_error": None,
             }
         )
-        print(f"  [ok] {record['name']}: det={record['classification']} llm={llm_score.classification}")
+        print(
+            f"  [ok] {record['name']}: det={record['classification']} "
+            f"llm={llm_score.classification} "
+            f"(spent so far ~${client.estimated_cost_usd(config.llm):.3f})"
+        )
 
     out = pd.DataFrame(rows)
     ok = out[out["llm_error"].isna()] if "llm_error" in out else out
@@ -116,6 +157,9 @@ def main() -> int:
         "sampled": len(sample),
         "scored": len(ok),
         "errors": errors,
+        "prompt_tokens": client.total_prompt_tokens,
+        "completion_tokens": client.total_completion_tokens,
+        "estimated_cost_usd": round(client.estimated_cost_usd(config.llm), 4),
         "classification_agreement_pct": (
             round(100.0 * (ok["det_classification"] == ok["llm_classification"]).mean(), 1)
             if len(ok)
