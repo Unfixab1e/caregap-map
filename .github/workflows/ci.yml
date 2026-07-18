@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        # No raw datasets, no processed outputs, no OpenAI key, no Databricks
+        # credentials, no network: data-dependent tests skip themselves and
+        # everything else runs on synthetic fixtures and stub clients.
+        run: python -m pytest
