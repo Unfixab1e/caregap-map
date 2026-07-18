@@ -4,6 +4,9 @@ data/processed/
 reports/
 *.csv
 !data/samples/*.csv
+# Private human-review evaluation data (contains real record excerpts)
+evals/private/
+!evals/icu_review_template.csv
 
 # Local databases (reviewer notes, scratch)
 data/*.db
