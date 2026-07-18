@@ -65,6 +65,50 @@ def classify_region(
     )
 
 
+def summarize_facilities(scored: pd.DataFrame, config: ScoringConfig | None = None) -> dict:
+    """Compute the regional metric set for an arbitrary set of scored facilities.
+
+    Used both by :func:`aggregate_regions` (per group) and by the app for
+    whatever slice the user selected, so numbers always agree.
+    """
+    config = config or ScoringConfig()
+    t = config.thresholds
+    n = len(scored)
+    counts = scored["classification"].value_counts() if n else pd.Series(dtype=int)
+    trusted = int(counts.get(CLASS_TRUSTED, 0))
+    likely_gap = int(counts.get(CLASS_LIKELY_GAP, 0))
+    insufficient = int(counts.get(CLASS_INSUFFICIENT, 0))
+    needs_review = int(counts.get(CLASS_NEEDS_REVIEW, 0))
+    sufficient = scored["data_completeness_score"] >= t.sufficient_completeness
+    pct_sufficient = 100.0 * float(sufficient.mean()) if n else 0.0
+
+    # Trust-weighted coverage: evidence weighted by data confidence, so a
+    # poorly documented "ICU" claim moves the needle less than a well
+    # documented one. Range 0-1.
+    weights = scored["data_completeness_score"] / 100.0
+    if n and weights.sum() > 0:
+        trust_weighted = float(
+            ((scored["capability_evidence_score"] / 100.0) * weights).sum() / weights.sum()
+        )
+    else:
+        trust_weighted = 0.0
+
+    status, reason = classify_region(n, trusted, needs_review, pct_sufficient, config)
+    return {
+        "facility_count": n,
+        "trusted_icu_count": trusted,
+        "likely_gap_count": likely_gap,
+        "insufficient_data_count": insufficient,
+        "needs_review_count": needs_review,
+        "pct_sufficient_data": round(pct_sufficient, 1),
+        "evidence_coverage_pct": round(100.0 * trusted / n, 1) if n else 0.0,
+        "data_coverage_pct": round(pct_sufficient, 1),
+        "trust_weighted_icu_coverage": round(trust_weighted, 3),
+        "region_status": status,
+        "region_status_reason": reason,
+    }
+
+
 def aggregate_regions(
     scored: pd.DataFrame,
     level: str,
@@ -88,55 +132,15 @@ def aggregate_regions(
     else:
         raise ValueError(f"Unknown aggregation level: {level!r}")
 
-    t = config.thresholds
-    sufficient = df["data_completeness_score"] >= t.sufficient_completeness
-
-    grouped = df.assign(_sufficient=sufficient).groupby(keys, dropna=False)
     rows = []
-    for group_keys, g in grouped:
+    for group_keys, g in df.groupby(keys, dropna=False):
         group_keys = group_keys if isinstance(group_keys, tuple) else (group_keys,)
-        counts = g["classification"].value_counts()
-        n = len(g)
-        trusted = int(counts.get(CLASS_TRUSTED, 0))
-        likely_gap = int(counts.get(CLASS_LIKELY_GAP, 0))
-        insufficient = int(counts.get(CLASS_INSUFFICIENT, 0))
-        needs_review = int(counts.get(CLASS_NEEDS_REVIEW, 0))
-        pct_sufficient = 100.0 * g["_sufficient"].mean() if n else 0.0
-
-        # Trust-weighted coverage: evidence weighted by data confidence, so a
-        # poorly documented "ICU" claim moves the needle less than a well
-        # documented one. Range 0-1.
-        weights = g["data_completeness_score"] / 100.0
-        if weights.sum() > 0:
-            trust_weighted = float(
-                ((g["capability_evidence_score"] / 100.0) * weights).sum() / weights.sum()
-            )
-        else:
-            trust_weighted = 0.0
-
-        status, reason = classify_region(n, trusted, needs_review, pct_sufficient, config)
-        row = dict(zip(keys, group_keys))
-        row.update(
-            {
-                "facility_count": n,
-                "trusted_icu_count": trusted,
-                "likely_gap_count": likely_gap,
-                "insufficient_data_count": insufficient,
-                "needs_review_count": needs_review,
-                "pct_sufficient_data": round(pct_sufficient, 1),
-                "evidence_coverage_pct": round(100.0 * trusted / n, 1) if n else 0.0,
-                "data_coverage_pct": round(pct_sufficient, 1),
-                "trust_weighted_icu_coverage": round(trust_weighted, 3),
-                "region_status": status,
-                "region_status_reason": reason,
-            }
-        )
+        row = dict(zip(keys, group_keys, strict=True))
+        row.update(summarize_facilities(g, config))
         rows.append(row)
 
     out = pd.DataFrame(rows)
     rename = {"state_key": "state"}
     if level == "district":
         rename["district_key"] = "district"
-    return out.rename(columns=rename).sort_values(
-        list(rename.values()), ignore_index=True
-    )
+    return out.rename(columns=rename).sort_values(list(rename.values()), ignore_index=True)

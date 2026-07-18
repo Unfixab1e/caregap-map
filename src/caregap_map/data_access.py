@@ -48,15 +48,11 @@ class LocalDataSource:
         return pd.read_csv(self.paths.facilities_csv, dtype=str)
 
     def load_pin_directory_raw(self) -> pd.DataFrame:
-        self._require(
-            self.paths.pin_directory_csv, "Place india_post_pincode_directory.csv under data/raw/."
-        )
+        self._require(self.paths.pin_directory_csv, "Place india_post_pincode_directory.csv under data/raw/.")
         return pd.read_csv(self.paths.pin_directory_csv, dtype=str)
 
     def load_nfhs_raw(self) -> pd.DataFrame:
-        self._require(
-            self.paths.nfhs_csv, "Place nfhs_5_district_health_indicators.csv under data/raw/."
-        )
+        self._require(self.paths.nfhs_csv, "Place nfhs_5_district_health_indicators.csv under data/raw/.")
         return pd.read_csv(self.paths.nfhs_csv, dtype=str)
 
     def load_scored_facilities(self) -> pd.DataFrame:
@@ -67,9 +63,7 @@ class LocalDataSource:
         return pd.read_parquet(self.paths.facilities_scored_parquet)
 
     def load_region_summary(self, level: str) -> pd.DataFrame:
-        path = (
-            self.paths.region_state_parquet if level == "state" else self.paths.region_district_parquet
-        )
+        path = self.paths.region_state_parquet if level == "state" else self.paths.region_district_parquet
         self._require(path, "Run `python scripts/build_processed_data.py` first.")
         return pd.read_parquet(path)
 

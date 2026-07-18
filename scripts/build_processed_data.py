@@ -91,7 +91,7 @@ def build(data_dir: Path) -> dict:
     fac, n_dupes_dropped = dedupe_facilities(fac_raw)
     fac = fac[FACILITY_KEEP_COLUMNS].copy()
 
-    coords = [parse_coordinates(lat, lon) for lat, lon in zip(fac["latitude"], fac["longitude"])]
+    coords = [parse_coordinates(lat, lon) for lat, lon in zip(fac["latitude"], fac["longitude"], strict=True)]
     fac["lat_parsed"] = [c[0] for c in coords]
     fac["lon_parsed"] = [c[1] for c in coords]
     fac["coord_status"] = [c[2] for c in coords]

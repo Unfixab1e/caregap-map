@@ -34,9 +34,7 @@ class ReviewStore(Protocol):
 
     def add_note(self, note: ReviewNote) -> ReviewNote: ...
 
-    def list_notes(
-        self, scope_type: str | None = None, scope_id: str | None = None
-    ) -> list[ReviewNote]: ...
+    def list_notes(self, scope_type: str | None = None, scope_id: str | None = None) -> list[ReviewNote]: ...
 
 
 class SqliteReviewStore:
@@ -77,9 +75,7 @@ class SqliteReviewStore:
             note_id = cur.lastrowid
         return note.model_copy(update={"id": note_id, "created_at": created_at})
 
-    def list_notes(
-        self, scope_type: str | None = None, scope_id: str | None = None
-    ) -> list[ReviewNote]:
+    def list_notes(self, scope_type: str | None = None, scope_id: str | None = None) -> list[ReviewNote]:
         query = "SELECT id, created_at, scope_type, scope_id, note, author FROM review_notes"
         clauses, params = [], []
         if scope_type is not None:
@@ -94,8 +90,6 @@ class SqliteReviewStore:
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [
-            ReviewNote(
-                id=r[0], created_at=r[1], scope_type=r[2], scope_id=r[3], note=r[4], author=r[5]
-            )
+            ReviewNote(id=r[0], created_at=r[1], scope_type=r[2], scope_id=r[3], note=r[4], author=r[5])
             for r in rows
         ]

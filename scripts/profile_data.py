@@ -56,7 +56,7 @@ def profile_facilities(df: pd.DataFrame) -> dict:
     dup_ids = dup_ids[dup_ids > 1]
 
     coord_status = pd.Series(
-        [parse_coordinates(lat, lon)[2] for lat, lon in zip(df["latitude"], df["longitude"])]
+        [parse_coordinates(lat, lon)[2] for lat, lon in zip(df["latitude"], df["longitude"], strict=True)]
     )
     states = df["address_stateOrRegion"].map(normalize_state)
     pins = df["address_zipOrPostcode"].map(normalize_pincode)
@@ -113,9 +113,7 @@ def profile_nfhs(df: pd.DataFrame) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="data", help="Directory containing raw/ (default: data)")
-    parser.add_argument(
-        "--out", default="reports/profile_report.json", help="Where to write the JSON report"
-    )
+    parser.add_argument("--out", default="reports/profile_report.json", help="Where to write the JSON report")
     args = parser.parse_args()
 
     paths = DataPaths(data_dir=Path(args.data_dir))
@@ -139,13 +137,9 @@ def main() -> int:
             problems.append(f"MALFORMED: {path} could not be parsed as CSV ({exc})")
             continue
         stats = profiler(df)
-        stats["dtypes_inferred"] = {
-            c: str(t) for c, t in pd.read_csv(path, nrows=500).dtypes.items()
-        }
+        stats["dtypes_inferred"] = {c: str(t) for c, t in pd.read_csv(path, nrows=500).dtypes.items()}
         stats["expected_shape"] = [expected_rows, expected_cols]
-        stats["shape_matches_expectation"] = (len(df) == expected_rows) and (
-            len(df.columns) == expected_cols
-        )
+        stats["shape_matches_expectation"] = (len(df) == expected_rows) and (len(df.columns) == expected_cols)
         report["datasets"][key] = stats
         print(
             f"[ok] {expected_name}: {len(df)} rows x {len(df.columns)} cols "

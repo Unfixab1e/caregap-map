@@ -30,14 +30,12 @@ def aggregate_pin_directory(pin_df: pd.DataFrame) -> pd.DataFrame:
     df["pincode_clean"] = df["pincode"].map(normalize_pincode)
     df = df[df["pincode_clean"].notna()]
 
-    parsed = [parse_coordinates(lat, lon) for lat, lon in zip(df["latitude"], df["longitude"])]
+    parsed = [parse_coordinates(lat, lon) for lat, lon in zip(df["latitude"], df["longitude"], strict=True)]
     df["lat_parsed"] = [p[0] if p[2] == "ok" else None for p in parsed]
     df["lon_parsed"] = [p[1] if p[2] == "ok" else None for p in parsed]
 
     df["state_canon"] = df["statename"].map(lambda v: normalize_state_verbose(v)[0])
-    df["district_clean"] = df["district"].map(
-        lambda v: (normalize_null_like(v) or "").title() or None
-    )
+    df["district_clean"] = df["district"].map(lambda v: (normalize_null_like(v) or "").title() or None)
 
     def _mode(series: pd.Series) -> str | None:
         values = series.dropna()
@@ -83,9 +81,7 @@ def assign_geography(fac_df: pd.DataFrame, pin_agg: pd.DataFrame) -> pd.DataFram
     df["state_from_field"] = [v[0] for v in verbose]
     df["state_field_method"] = [v[1] for v in verbose]
 
-    df["state_final"] = df["state_from_pin"].where(
-        df["state_from_pin"].notna(), df["state_from_field"]
-    )
+    df["state_final"] = df["state_from_pin"].where(df["state_from_pin"].notna(), df["state_from_field"])
     df["geo_source"] = "none"
     df.loc[df["state_from_field"].notna(), "geo_source"] = "state_field"
     df.loc[df["state_from_pin"].notna(), "geo_source"] = "pin_directory"

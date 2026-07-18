@@ -161,6 +161,7 @@ class EvidenceKeywords(BaseModel):
     # Patterns that extract an ICU bed count (first capture group = count).
     icu_bed_count: list[str] = [
         r"(\d{1,4})\s*(?:-|\s)?bed(?:ded)?\s+(?:[a-z]*\s+)?icu",
+        r"(\d{1,4})\s*(?:-|\s)?bed(?:ded)?\s+(?:[a-z]*\s+)?(?:intensive|critical)\s+care",
         r"icu[^.;]{0,30}?(\d{1,4})\s*beds?",
         r"(\d{1,4})\s*icu\s*beds?",
     ]

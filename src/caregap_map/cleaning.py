@@ -108,7 +108,7 @@ def normalize_pincode(value: Any) -> str | None:
     text = normalize_null_like(value)
     if text is None:
         return None
-    match = re.search(r"\b([1-9]\d{5})\b", text.replace(" ", ""))
+    match = re.search(r"(?<!\d)([1-9]\d{5})(?!\d)", text.replace(" ", ""))
     return match.group(1) if match else None
 
 
@@ -210,6 +210,7 @@ def _state_key(value: str) -> str:
     key = re.sub(r"[^\w\s]", " ", key)
     key = re.sub(r"\s+", " ", key).strip()
     return key
+
 
 _CANONICAL_BY_KEY = {_state_key(s): s for s in CANONICAL_STATES}
 

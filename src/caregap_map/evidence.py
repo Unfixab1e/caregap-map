@@ -163,7 +163,7 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
     # ICU bed counts (capacity signal).
     bed_counts: list[int] = []
     for patterns in [_compile(tuple(kw.icu_bed_count))]:
-        for field, items in texts.items():
+        for items in texts.values():
             for item in items:
                 for pattern in patterns:
                     for m in pattern.finditer(item):

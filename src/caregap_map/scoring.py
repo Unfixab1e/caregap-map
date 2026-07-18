@@ -56,9 +56,7 @@ class FacilityScore(BaseModel):
         return [f.name for f in self.validation_flags if f.severity == SEV_CONTRADICTION]
 
 
-def compute_evidence_score(
-    evidence: EvidenceResult, config: ScoringConfig
-) -> tuple[int, dict[str, int]]:
+def compute_evidence_score(evidence: EvidenceResult, config: ScoringConfig) -> tuple[int, dict[str, int]]:
     """Score how strongly the record supports ICU capability (0-100)."""
     w = config.evidence_weights
     components: dict[str, int] = {}

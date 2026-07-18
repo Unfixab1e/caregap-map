@@ -69,9 +69,7 @@ def validate_facility(
 
     # 3. ICU claim without any free-text support (claim only in structured lists).
     if evidence.explicit_icu_claim:
-        explicit_fields = {
-            f.field for f in evidence.supporting_text_fragments if f.group == "explicit_icu"
-        }
+        explicit_fields = {f.field for f in evidence.supporting_text_fragments if f.group == "explicit_icu"}
         has_description = normalize_null_like(record.get("description")) is not None
         if has_description and explicit_fields and explicit_fields <= {"capability", "specialties"}:
             # Informational: descriptions are often one-liners, so a claim
