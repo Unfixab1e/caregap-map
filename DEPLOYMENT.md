@@ -4,9 +4,12 @@ Two supported paths. **Path A (volume-mounted Parquet)** is the fastest and need
 code changes; **Path B (Unity Catalog tables)** uses the `DatabricksDataSource` adapter
 through a SQL warehouse.
 
-> Status: these steps are written and reviewed but have **not been executed against a
-> live workspace from this repo** (no workspace credentials on the dev machine). The
-> adapter itself is unit-tested with an injected connection.
+> **Status (2026-07-18):** Databricks CLI v1.8.0 is installed on the dev machine, all
+> artifacts below are ready, but the steps have **not been executed against a live
+> workspace** — `databricks auth login` needs an interactive browser session by a
+> workspace member. The adapters are unit-tested with injected connections. Do not
+> mark deployment complete until the app loads and the main workflow works in a
+> browser.
 
 ## Prerequisites
 

@@ -1,58 +1,57 @@
-# Demo script (~4 minutes)
+# Demo script — the 90-second flow
 
-**Setup before the demo:** `python scripts/build_processed_data.py` has been run;
-`streamlit run app.py` is open on *All India*.
+**Setup:** pipeline built (`python scripts/build_processed_data.py`), app open
+(`streamlit run app.py`), a district with *Insufficient data to assess* and a district
+with *Potential planning gap* pre-identified in two browser tabs.
 
-## 1. The problem (30 s)
+**Core line:** *"No ICU evidence and not enough data to know are different planning
+situations."*
 
-> "Public ICU planning data in India is messy: 10,000 facility records, but capacity is
-> filled for only a quarter of them, state names come in 253 spellings, and 'ICU' in a
-> marketing blurb is not a verified ICU. If a planner naively maps this data, every badly
-> documented district looks like a medical desert. CareGap Map is the trust layer that
-> stops that."
+**Secondary line:** *"The model proposes evidence, but only source-verifiable evidence
+is allowed to affect the score."*
 
-## 2. All-India view (45 s)
+## The 90 seconds
 
-- Point at the four metrics: 🟢 Trusted / 🟡 Needs review / 🔴 Likely gap / ⚪ Insufficient.
-- Key line: **"These four states are the product.** 'No evidence' and 'no data' are
-  different colours — a data desert is *unknown*, never automatically a gap."
-- Show the stacked state chart: green vs red vs gray share per state.
+1. **(0:00–0:15) Data-desert district.** Open the ⚪ district.
+   > "10,000 facility records, but a quarter of the fields are empty. This district has
+   > records — they're just too thin to judge. CareGap Map **refuses** to call it an ICU
+   > desert: *Insufficient data to assess*. That's a data problem, not a confirmed
+   > medical gap."
 
-## 3. Pick a risky region (60 s)
+2. **(0:15–0:30) Planning-gap district.** Switch to the 🔴 district.
+   > "Here the records are complete and judgeable — and none of them shows credible ICU
+   > evidence. *Potential planning gap.* Same map colour logic, opposite meaning to a
+   > data desert — and the tool never conflates the two."
 
-- Select a state with weak coverage; show the region banner and
-  **trust-weighted ICU coverage** (evidence weighted by data completeness —
-  "a poorly documented claim moves this needle less").
-- Select a district classified ⚪ *Insufficient Data / Data Desert*:
-  > "The tool refuses to call this an ICU desert — the records are too thin to judge.
-  > It tells the planner what's missing instead."
-- Contrast with a 🔴 *Likely Medical Gap* district:
-  > "Here the records are complete and still show no ICU evidence — that's a real
-  > planning signal."
+3. **(0:30–1:00) Facility drilldown.** Open one 🟢 trusted (or 🟡 review) facility.
+   - point at the **exact source fragment** ("22-bed Level II Intensive Care Unit …")
+   - **extractor provenance** (deterministic / LLM — LLM quotes are verified verbatim
+     against the source; hallucinated quotes are dropped and flagged)
+   - **ICU subtype** ("NICU only — no general adult ICU claim" where applicable)
+   - **independent corroboration** count ("a marketing phrase can't corroborate itself")
+   - **missing evidence** list and validator flags
+   > "Every score is traceable to the sentence that produced it. No black box."
 
-## 4. Facility drilldown — the trust story (75 s)
+4. **(1:00–1:20) Reviewer note.** On the district, save:
+   > *"Verify these facilities before classifying this district as an ICU desert."*
+   Refresh the page — the note is still there (SQLite locally, Delta table on
+   Databricks, surviving restarts).
 
-- Open a 🟢 trusted facility: show the **exact original fragments** ("22-bed Level II
-  Intensive Care Unit … 11 ventilator beds"), the score breakdown, corroboration across
-  fields.
-- Open a 🟡 needs-review facility: an ICU claim with **no corroboration** — validator flag
-  `icu_claim_uncorroborated`, and the missing-evidence list spells out what to verify.
-- Key line: **"Every score is traceable to the sentence that produced it. No black box."**
+5. **(1:20–1:30) Close.**
+   > "Deterministic, configurable, human-calibrated — we manually reviewed every
+   > LLM disagreement, found our own false-Trusted pattern, and fixed it with a
+   > corroboration rule. That's the trust layer."
 
-## 5. Reviewer note (30 s)
+## Honesty guardrails (never say)
 
-- On the risky district, save the note:
-  > "Verify these facilities before classifying this district as an ICU desert."
-- Mention: notes persist in SQLite behind a storage interface that swaps to
-  Databricks in the next milestone.
-
-## 6. Close (20 s)
-
-> "Deterministic, configurable, fully traceable — and the architecture has one seam for
-> Databricks tables and one for an optional LLM extractor, which must still pass the same
-> deterministic validation. That's the trust layer."
+- any verified clinical claim ("this hospital HAS an ICU")
+- patient recommendations or referrals
+- that geographic access / travel time is measured
+- population-adjusted conclusions
+- that a green state means adequate coverage (it means *evidence exists*)
 
 ## Fallback
 
-If the app fails: `python -m pytest` (69 green tests) and
-`data/processed/cleaning_summary.json` tell the same story from the terminal.
+If the app fails: `python -m pytest` (142 green tests),
+`data/processed/cleaning_summary.json` and `data/processed/llm_comparison.json` tell
+the story from the terminal.

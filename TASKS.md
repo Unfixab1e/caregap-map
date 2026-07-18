@@ -1,48 +1,52 @@
 # Task tracking
 
+Legend: ✅ code-complete **and** locally tested · 🟡 code-complete, **not live-tested** ·
+⬜ incomplete · ✨ stretch
+
 ## Milestone 1 — deterministic local vertical slice ✅ (2026-07-18)
 
-- [x] Protect repo: .gitignore for raw/processed data, env files, local DBs
-- [x] Project docs: PROJECT_SPEC, DECISIONS, DEMO_SCRIPT, README, TASKS
-- [x] Python tooling: pyproject (pandas, pyarrow, streamlit, plotly, pydantic; pytest, ruff)
-- [x] scripts/profile_data.py — raw validation + machine-readable report
-- [x] scripts/build_processed_data.py — reproducible Parquet pipeline + cleaning summary
-- [x] Deterministic ICU evidence extraction with exact fragments (evidence.py)
-- [x] Deterministic validators (validator.py)
-- [x] Independent evidence/completeness scoring + four-state classification (scoring.py)
-- [x] State/district aggregation separating gaps from data deserts (aggregation.py)
-- [x] Streamlit UI: region summary, classification chart, facility table, drilldown, notes
-- [x] Persistence interface + SQLite reviewer-note store
-- [x] Test suite (69 tests: cleaning, geography, evidence, scoring, aggregation,
-      persistence, sample end-to-end, app smoke)
+- ✅ Repo protection, docs, tooling, profiling, cleaning pipeline
+- ✅ Deterministic evidence extraction with exact fragments; validators
+- ✅ Independent evidence/completeness scores + four-state classification
+- ✅ State/district aggregation separating gaps from data deserts
+- ✅ Streamlit UI with facility drilldown + reviewer notes (SQLite)
 
-## Milestone 2 — Databricks deployment ✅ code-complete (2026-07-18)
+## Milestone 2 — Databricks deployment
 
-- [x] `DatabricksDataSource` implementing the existing `DataSource` protocol
-      (databricks-sql-connector, unit-tested via injected connection)
-- [x] `get_data_source()` factory: `CAREGAP_DATA_SOURCE=local|databricks`; app wired to it
-- [x] DEPLOYMENT.md: volume upload, app create/deploy, both data paths, pipeline-as-job
-- [x] scripts/register_tables.sql: UC table registration + service-principal grants
-- [ ] Execute against a live workspace (blocked: no workspace credentials on dev machine)
-- [ ] Reviewer notes on Lakebase/Delta via the existing `ReviewStore` protocol
+- ✅ `DatabricksDataSource` (SQL warehouse, stub-tested) + `get_data_source()` factory
+- ✅ requirements.txt for the Databricks Apps runtime (Path A)
+- ✅ DEPLOYMENT.md incl. durable-notes acceptance test; scripts/register_tables.sql
+- ✅ Databricks CLI v1.8.0 installed on the dev machine
+- ⬜ **Live deployment — BLOCKED on workspace credentials** (`databricks auth login`
+  needs an interactive browser session by a workspace member). All artifacts ready.
+- ⬜ Live workflow test in a browser (All-India → state → district → drilldown → note)
 
-## Milestone 3 — optional LLM evidence extractor ✅ code-complete (2026-07-18)
+## Milestone 3 — LLM evidence extractor
 
-- [x] `LlmEvidenceExtractor` implementing the same interface as `extract_evidence`
-      (same `EvidenceResult` model, provenance recorded)
-- [x] Sentence-level evidence selection with **verified source-anchored quotes**;
-      hallucinated fragments dropped + flagged; unclear-claim categorisation + explanation
-- [x] Deterministic validation, scoring and classification stay mandatory on LLM output
-- [x] Side-by-side eval script: scripts/run_llm_extraction.py (stratified sample,
-      agreement metrics)
-- [x] Comparison run against the real OpenAI API (2026-07-18): 24 stratified records,
-      0 errors, 75% classification agreement, ~$0.005 measured cost; two guardrail
-      improvements came out of the disagreement review (low-information fragment
-      filter, multi-group quotes)
+- ✅ `LlmEvidenceExtractor` (same interface/model), verified source-anchored quotes
+- ✅ Real-API comparison runs (gpt-4o-mini, 24 stratified records, 0 errors, ≈$0.005/run)
+- ✅ Manual review of every disagreement → reports/llm_disagreement_review.md (ignored)
+- ✅ Guardrails hardened from the review: low-information filter, per-group quotes,
+  bed-count anchoring (D15)
 
-## Backlog / known limitations
+## Trust-layer hardening (2026-07-18)
 
-- [ ] NFHS district-level join (needs fuzzy match with recorded confidence)
-- [ ] India map visualisation (choropleth) — table/bar first, map later
-- [ ] Reviewer-note export (CSV) for planning workflows
-- [ ] `possible_duplicate_facility`: consider address-level similarity, still no auto-merge
+- ✅ ICU subtype extraction + UI wording (D16)
+- ✅ Trusted calibration: explicit claim + ≥2 independent corroboration categories
+  (D14; Trusted 2,006 → 535, all demotions to review, none to gap)
+- ✅ Regional wording: evidence ≠ coverage; non-scope disclaimer (Phase 8)
+- ✅ Durable notes: `DeltaReviewStore` + `CAREGAP_REVIEW_STORE` factory (stub-tested)
+- 🟡 Durable-notes refresh/redeploy acceptance — needs the live workspace
+- ✅ Human-review evaluation workflow (evals/ + generator + evaluator, 45-row sample
+  generated locally)
+- ⬜ Human labels (Nayun) → then re-calibrate thresholds against ground truth
+- ✅ GitHub Actions CI (push/PR; data-free test suite) — 🟡 green run pending push
+- ✅ Facility evidence point map (beta, honest wording, table fallback)
+- ✨ District choropleth (needs district geometry with recorded match confidence)
+- ✨ MLflow tracing (deferred, D17 — UI already exposes the full audit chain)
+
+## Backlog
+
+- ⬜ NFHS district-level join (fuzzy match with recorded confidence)
+- ⬜ Reviewer-note export (CSV) for planning workflows
+- ⬜ Path B service-principal OAuth (avoid PAT in app config; use app resources)

@@ -49,10 +49,19 @@ claimed, evidence never looks at how much is filled in.
 |---|---|
 | Self-contradictory record | Needs Human Review |
 | Completeness below judgeability threshold | Insufficient Data |
-| High evidence, sufficient data, no suspicious flags | Trusted ICU Coverage |
-| High evidence but suspicious claims | Needs Human Review |
+| High evidence + explicit claim + ≥2 independent corroboration categories | Trusted ICU Coverage |
+| High evidence but suspicious claims, no explicit claim, or insufficient corroboration | Needs Human Review |
 | Low evidence, sufficient data | Likely Medical Gap |
 | Mid-band (ambiguous) evidence | Needs Human Review |
+
+Corroboration categories: equipment, procedure, staffing, anchored ICU bed count,
+multi-field evidence — where a signal produced by the same pattern as the explicit claim
+itself never counts (D14). ICU subtypes (NICU/PICU/ICCU/MICU/SICU) are detected and
+surfaced; specialised-subtype-only evidence is never displayed as general adult ICU (D16).
+
+Region-level statuses use separate wording ("Trusted ICU evidence found", "Potential
+planning gap", "Insufficient data to assess", "Needs facility verification") because
+evidence presence is not coverage sufficiency.
 
 All thresholds and weights live in `src/caregap_map/config.py` and can be overridden via a
 JSON file pointed to by `CAREGAP_SCORING_CONFIG` (see DECISIONS.md D5).

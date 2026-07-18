@@ -3,20 +3,31 @@
 **A trust layer for ICU coverage planning in India.**
 Databricks Data Legend challenge — Medical Desert Planner mission.
 
-CareGap Map helps NGO and public-health planners tell a **likely real ICU gap** apart from a
-gap caused by **incomplete data**. The system never treats *"no reliable ICU evidence"* as
-*"no ICU exists"* — facilities and regions land in one of four states:
+**Problem:** public facility data is messy — 10,088 records, 253 spellings of state
+names, capacity filled for a quarter of facilities, and "ICU" in a marketing blurb is not
+a verified ICU. Mapped naively, every badly documented district looks like a medical
+desert.
 
-| | State | Meaning |
+**Core differentiator:** CareGap Map never treats *"no reliable ICU evidence"* as
+*"no ICU exists."* Facilities land in one of four states:
+
+| | Facility state | Meaning |
 |---|---|---|
-| 🟢 | Trusted ICU Coverage | strong evidence, sufficient data |
+| 🟢 | Trusted ICU Coverage | explicit claim + ≥2 independent corroboration categories |
 | 🔴 | Likely Medical Gap | well-documented record, no ICU evidence |
-| ⚪ | Insufficient Data / Data Desert | cannot be judged — *unknown*, not a gap |
-| 🟡 | Needs Human Review | contradictory, suspicious or ambiguous evidence |
+| ⚪ | Insufficient Data | cannot be judged — *unknown*, not a gap |
+| 🟡 | Needs Human Review | contradictory, suspicious, ambiguous or uncorroborated |
 
-Every classification is traceable to the **exact original text fragments** that produced it.
+Regions use deliberately different wording — **"Trusted ICU evidence found"**,
+**"Potential planning gap"**, **"Insufficient data to assess"**, **"Needs facility
+verification"** — because evidence presence is not coverage sufficiency. ICU subtypes
+(NICU/PICU/ICCU/…) are surfaced and never displayed as confirmed general adult ICU.
+
+Every classification is traceable to the **exact original text fragments** that produced
+it, for both the deterministic extractor and the optional LLM extractor (whose quotes are
+verified verbatim against the source; hallucinated quotes are dropped and flagged).
 See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the frozen scope and
-[DECISIONS.md](DECISIONS.md) for design decisions.
+[DECISIONS.md](DECISIONS.md) for the decision log (D1–D17).
 
 ## Quickstart
 
@@ -143,10 +154,41 @@ pass `--yes`, reports live spend per record, and gpt-4o-mini keeps even a full 1
 run in the low single-digit dollars. Prices used for the estimate are configurable in
 `LlmConfig`.
 
-## Roadmap
+## Evaluation against human labels
 
-- Execute the Databricks deployment against a live workspace (steps ready, needs credentials).
-- Run the LLM comparison at scale and tune extraction prompts on disagreements.
-- NFHS district-level join with recorded match confidence.
+Extractor agreement is diagnostic, not accuracy. `evals/` holds a labelled-review
+workflow (template committed; real excerpts stay git-ignored):
 
-See [TASKS.md](TASKS.md) for the current status.
+```bash
+python scripts/build_eval_sample.py   # stratified 45-row sample incl. disagreements
+# label evals/private/icu_review.csv, then:
+python scripts/evaluate_labels.py     # false-Trusted / false-Gap first-class metrics
+```
+
+## Live app & deployment status
+
+**Not yet live.** All deployment artifacts are ready (requirements.txt, app.yaml,
+DEPLOYMENT.md, register_tables.sql, Databricks CLI installed); executing them requires a
+workspace member to run `databricks auth login` (interactive browser OAuth). Once
+deployed, the live URL belongs here: **`<pending live deployment>`**.
+
+## Limitations (honest list)
+
+- Signals reflect **dataset consistency, not verified clinical capability**; no medical
+  claims, referrals, or diagnosis.
+- Regional statuses describe **evidence**, not population need, bed availability, travel
+  time, or physical accessibility.
+- LLM extraction errs toward *missing* evidence (exact-quote discipline) — the safe
+  direction, but a recall limitation.
+- NFHS indicators are cleaned but not yet joined at district level.
+- The human-labelled evaluation sample exists but labels are pending; thresholds are
+  calibrated from the manual disagreement review so far.
+
+## Privacy & licensing
+
+Raw challenge CSVs, processed outputs, LLM comparison outputs, evaluation excerpts,
+local databases and `.env` are all git-ignored — the repository contains only code,
+docs, and a small synthetic sample. Redistribution rights of the source records are
+unclear, so no real record content is committed.
+
+See [TASKS.md](TASKS.md) for code-complete vs live-tested status.
