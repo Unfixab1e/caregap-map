@@ -1,11 +1,25 @@
-# Databricks Apps configuration for CareGap Map.
-# The app expects processed Parquet data; on Databricks, point
-# CAREGAP_DATA_DIR at a volume containing processed/ outputs
-# (or swap LocalDataSource for the DatabricksDataSource adapter
-# in the next milestone).
+# Databricks Apps configuration for CareGap Map (see DEPLOYMENT.md).
+#
+# Path A (default below): the app reads Parquet straight from a mounted
+# Unity Catalog volume via the local data source.
+# Path B: switch CAREGAP_DATA_SOURCE to "databricks" and provide the
+# SQL-warehouse settings to read registered UC tables instead.
 command: ["streamlit", "run", "app.py"]
 env:
   - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS
     value: "false"
+  - name: CAREGAP_DATA_SOURCE
+    value: "local"
+  # Local dev default; on Databricks point at the volume, e.g.
+  # /Volumes/main/caregap/caregap_data
   - name: CAREGAP_DATA_DIR
     value: "data"
+  # --- Path B (Unity Catalog tables via SQL warehouse) ---
+  # - name: CAREGAP_DATA_SOURCE
+  #   value: "databricks"
+  # - name: CAREGAP_DATABRICKS_CATALOG
+  #   value: "main"
+  # - name: CAREGAP_DATABRICKS_SCHEMA
+  #   value: "caregap"
+  # - name: DATABRICKS_HTTP_PATH
+  #   value: "/sql/1.0/warehouses/<warehouse-id>"

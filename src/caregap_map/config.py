@@ -220,6 +220,20 @@ class Thresholds(BaseModel):
     region_min_trusted: int = 1  # >= this many trusted facilities -> trusted coverage
 
 
+class LlmConfig(BaseModel):
+    """Settings for the optional model-backed evidence extractor.
+
+    The LLM only *extracts* evidence; scores, validation and classification
+    always stay deterministic. The API key is read from ``OPENAI_API_KEY``
+    and never stored in this config.
+    """
+
+    model: str = "gpt-4o-mini"
+    temperature: float = 0.0
+    max_output_tokens: int = 2000
+    request_timeout_s: float = 60.0
+
+
 class ScoringConfig(BaseModel):
     """Bundle of everything the scoring pipeline needs."""
 
@@ -227,6 +241,7 @@ class ScoringConfig(BaseModel):
     evidence_weights: EvidenceWeights = Field(default_factory=EvidenceWeights)
     completeness_weights: CompletenessWeights = Field(default_factory=CompletenessWeights)
     thresholds: Thresholds = Field(default_factory=Thresholds)
+    llm: LlmConfig = Field(default_factory=LlmConfig)
     # A record with fewer than this many populated key fields is "suspiciously sparse".
     sparse_record_min_fields: int = 2
 

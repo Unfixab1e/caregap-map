@@ -30,7 +30,7 @@ from caregap_map.config import (  # noqa: E402
     default_paths,
     load_scoring_config,
 )
-from caregap_map.data_access import LocalDataSource, MissingDataError  # noqa: E402
+from caregap_map.data_access import MissingDataError, get_data_source  # noqa: E402
 from caregap_map.persistence import ReviewNote, SqliteReviewStore  # noqa: E402
 
 # Status colors (validated with the dataviz palette checker, severity order:
@@ -54,7 +54,7 @@ st.set_page_config(page_title="CareGap Map", page_icon="🏥", layout="wide")
 
 @st.cache_data(show_spinner="Loading processed data ...")
 def load_data():
-    source = LocalDataSource()
+    source = get_data_source()
     scored = source.load_scored_facilities()
     region_state = source.load_region_summary("state")
     region_district = source.load_region_summary("district")

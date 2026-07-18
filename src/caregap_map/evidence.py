@@ -38,7 +38,12 @@ class EvidenceFragment(BaseModel):
 
 
 class EvidenceResult(BaseModel):
-    """Structured outcome of deterministic evidence extraction."""
+    """Structured outcome of evidence extraction (any extractor).
+
+    ``extractor`` records provenance ("deterministic" or "llm");
+    ``unclear_claims`` and ``extraction_explanation`` are only populated by
+    the model-backed extractor.
+    """
 
     explicit_icu_claim: bool = False
     icu_bed_count: int | None = None
@@ -51,6 +56,9 @@ class EvidenceResult(BaseModel):
     missing_evidence: list[str] = Field(default_factory=list)
     contradiction_flags: list[str] = Field(default_factory=list)
     suspicious_claim_flags: list[str] = Field(default_factory=list)
+    extractor: str = "deterministic"
+    unclear_claims: list[str] = Field(default_factory=list)
+    extraction_explanation: str | None = None
 
 
 @lru_cache(maxsize=32)
@@ -74,7 +82,7 @@ def _sentence_window(text: str, start: int, end: int) -> str:
     return fragment
 
 
-def _field_texts(record: Mapping[str, Any]) -> dict[str, list[str]]:
+def field_texts(record: Mapping[str, Any]) -> dict[str, list[str]]:
     """Collect searchable text items per evidence field.
 
     ``description`` is one free-text block; list fields become one item per
@@ -99,7 +107,7 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
     original fragment that produced it.
     """
     kw = config.keywords
-    texts = _field_texts(record)
+    texts = field_texts(record)
     result = EvidenceResult()
     matched_patterns: dict[str, set[str]] = {g: set() for g in _POSITIVE_GROUPS}
     supporting_fields: set[str] = set()
@@ -175,30 +183,48 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
         result.icu_bed_count = max(bed_counts)
         result.capacity_signal = True
 
-    # Suspicious-claim heuristics (dataset consistency, not clinical truth).
+    apply_consistency_checks(record, result)
+    result.missing_evidence = build_missing_evidence(texts, result)
+
+    return result
+
+
+def apply_consistency_checks(record: Mapping[str, Any], result: EvidenceResult) -> None:
+    """Suspicious-claim heuristics (dataset consistency, not clinical truth).
+
+    Shared by every extractor implementation - deterministic and LLM-backed
+    results go through the identical checks.
+    """
     total_capacity = parse_int_safe(record.get("capacity"))
     if (
         result.icu_bed_count is not None
         and total_capacity is not None
         and total_capacity > 0
         and result.icu_bed_count > total_capacity
+        and "icu_beds_exceed_total_capacity" not in result.suspicious_claim_flags
     ):
         result.suspicious_claim_flags.append("icu_beds_exceed_total_capacity")
-    if result.explicit_icu_claim and total_capacity == 0:
+    if (
+        result.explicit_icu_claim
+        and total_capacity == 0
+        and "icu_claim_with_zero_capacity" not in result.suspicious_claim_flags
+    ):
         result.suspicious_claim_flags.append("icu_claim_with_zero_capacity")
 
-    # What is missing to judge this record confidently?
-    if not texts["description"]:
-        result.missing_evidence.append("no description text")
-    if not result.explicit_icu_claim:
-        result.missing_evidence.append("no explicit ICU / intensive-care claim")
-    if not result.equipment_signals:
-        result.missing_evidence.append("no ICU-relevant equipment mentioned")
-    if not result.procedure_signals:
-        result.missing_evidence.append("no ICU-relevant procedures mentioned")
-    if not result.staffing_signals:
-        result.missing_evidence.append("no critical-care staffing information")
-    if result.icu_bed_count is None:
-        result.missing_evidence.append("no ICU bed count")
 
-    return result
+def build_missing_evidence(texts: dict[str, list[str]], result: EvidenceResult) -> list[str]:
+    """What is missing to judge this record confidently? Extractor-agnostic."""
+    missing: list[str] = []
+    if not texts.get("description"):
+        missing.append("no description text")
+    if not result.explicit_icu_claim:
+        missing.append("no explicit ICU / intensive-care claim")
+    if not result.equipment_signals:
+        missing.append("no ICU-relevant equipment mentioned")
+    if not result.procedure_signals:
+        missing.append("no ICU-relevant procedures mentioned")
+    if not result.staffing_signals:
+        missing.append("no critical-care staffing information")
+    if result.icu_bed_count is None:
+        missing.append("no ICU bed count")
+    return missing

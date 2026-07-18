@@ -98,3 +98,24 @@ green and red are never adjacent; the palette passes color-vision-deficiency sep
 checks in light and dark modes. "Insufficient Data" is deliberately gray: absence of data
 should not carry a status hue. Classifications are always also shown as text/icons, never
 color alone.
+
+## D12 — LLM extraction is subordinate to deterministic verification
+
+The optional OpenAI-backed extractor (`llm_extraction.py`) returns the same
+`EvidenceResult` model as the deterministic extractor, but nothing it says is taken on
+faith: every quoted fragment must be located verbatim (whitespace-tolerant) in the source
+record and is re-anchored to the *source's own* text; unlocatable quotes are dropped and
+counted in a `llm_unverified_fragments_dropped:N` suspicious flag. An explicit ICU claim
+or bed count without a verified fragment behind it is ignored. Scoring, validators and
+classification run deterministically on the result — the LLM can only change *which
+evidence is found*, never *how it is judged*.
+
+## D13 — Two Databricks data paths, volume-first
+
+Deployment supports (A) the app reading processed Parquet from a FUSE-mounted Unity
+Catalog volume through the unchanged `LocalDataSource` (fastest, fewest moving parts) and
+(B) `DatabricksDataSource` reading registered UC tables via a SQL warehouse
+(`CAREGAP_DATA_SOURCE=databricks`). The adapter validates identifiers, lazy-imports the
+connector, and takes an injectable connection factory so it is unit-testable without a
+workspace. The deployment steps are documented but not yet executed against a live
+workspace (no credentials on the dev machine) — recorded honestly in TASKS.md.

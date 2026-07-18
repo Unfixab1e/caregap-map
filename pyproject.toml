@@ -21,6 +21,12 @@ dev = [
     "pytest>=8",
     "ruff>=0.4",
 ]
+llm = [
+    "openai>=1.40",
+]
+databricks = [
+    "databricks-sql-connector>=3.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

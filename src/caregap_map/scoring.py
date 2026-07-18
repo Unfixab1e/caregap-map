@@ -15,7 +15,7 @@ All weights and thresholds come from :class:`caregap_map.config.ScoringConfig`.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import pandas as pd
@@ -163,10 +163,20 @@ def score_facility(
     record: Mapping[str, Any],
     config: ScoringConfig | None = None,
     is_name_duplicate: bool = False,
+    extractor: Callable[[Mapping[str, Any]], EvidenceResult] | None = None,
 ) -> FacilityScore:
-    """Extract evidence, validate, score and classify one facility record."""
+    """Extract evidence, validate, score and classify one facility record.
+
+    ``extractor`` swaps the evidence source (e.g. an
+    :class:`~caregap_map.llm_extraction.LlmEvidenceExtractor` bound method);
+    default is the deterministic extractor. Whatever the extractor returns,
+    validation, scoring and classification stay deterministic.
+    """
     config = config or ScoringConfig()
-    evidence = extract_evidence(record, config)
+    if extractor is None:
+        evidence = extract_evidence(record, config)
+    else:
+        evidence = extractor(record)
     flags = validate_facility(record, evidence, config, is_name_duplicate=is_name_duplicate)
     evidence_score, ev_components = compute_evidence_score(evidence, config)
     completeness_score, comp_components = compute_completeness_score(record, config)

@@ -93,13 +93,40 @@ data/samples               tiny synthetic sample (committed, no real data)
 See [.env.example](.env.example). Thresholds are documented in
 [DECISIONS.md](DECISIONS.md) (D4, D5, D7).
 
+## Databricks deployment
+
+Two paths, both documented step-by-step in [DEPLOYMENT.md](DEPLOYMENT.md):
+
+- **Path A:** the app reads processed Parquet from a mounted Unity Catalog volume
+  (`CAREGAP_DATA_DIR=/Volumes/...`) — zero code changes.
+- **Path B:** `CAREGAP_DATA_SOURCE=databricks` reads registered UC tables through a SQL
+  warehouse via the `DatabricksDataSource` adapter
+  (`pip install -e ".[databricks]"`, tables via [scripts/register_tables.sql](scripts/register_tables.sql)).
+
+## Optional LLM evidence extractor
+
+`LlmEvidenceExtractor` ([src/caregap_map/llm_extraction.py](src/caregap_map/llm_extraction.py))
+implements the same interface as the deterministic extractor. Guardrails:
+
+- every quoted fragment must be **verified as an exact substring** of the source record —
+  hallucinated quotes are dropped and flagged;
+- an ICU claim or bed count only counts when backed by a verified fragment;
+- scoring, validation and classification remain **fully deterministic** for both extractors.
+
+Compare it against the baseline on a stratified sample (needs `OPENAI_API_KEY` and
+`pip install -e ".[llm]"`):
+
+```bash
+python scripts/run_llm_extraction.py --limit 24
+```
+
+Outputs `data/processed/llm_comparison.json` (agreement metrics) and
+`facilities_scored_llm.parquet`. The app continues to display the deterministic results.
+
 ## Roadmap
 
-- **Databricks deployment:** implement `DatabricksDataSource` against Unity Catalog
-  tables, deploy via `app.yaml` as a Databricks App.
-- **Optional LLM extraction:** an OpenAI-backed extractor implementing the same interface
-  as the deterministic one (sentence-level evidence selection, unclear-claim
-  categorisation); its output still passes deterministic validation.
-- **NFHS join:** district-level health context with recorded match confidence.
+- Execute the Databricks deployment against a live workspace (steps ready, needs credentials).
+- Run the LLM comparison at scale and tune extraction prompts on disagreements.
+- NFHS district-level join with recorded match confidence.
 
 See [TASKS.md](TASKS.md) for the current status.

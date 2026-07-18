@@ -16,20 +16,26 @@
 - [x] Test suite (69 tests: cleaning, geography, evidence, scoring, aggregation,
       persistence, sample end-to-end, app smoke)
 
-## Milestone 2 — Databricks deployment (next)
+## Milestone 2 — Databricks deployment ✅ code-complete (2026-07-18)
 
-- [ ] Upload raw CSVs to a Unity Catalog volume; run pipeline as a Databricks job/notebook
-- [ ] `DatabricksDataSource` implementing the existing `DataSource` protocol
-      (databricks-sql-connector or Spark)
+- [x] `DatabricksDataSource` implementing the existing `DataSource` protocol
+      (databricks-sql-connector, unit-tested via injected connection)
+- [x] `get_data_source()` factory: `CAREGAP_DATA_SOURCE=local|databricks`; app wired to it
+- [x] DEPLOYMENT.md: volume upload, app create/deploy, both data paths, pipeline-as-job
+- [x] scripts/register_tables.sql: UC table registration + service-principal grants
+- [ ] Execute against a live workspace (blocked: no workspace credentials on dev machine)
 - [ ] Reviewer notes on Lakebase/Delta via the existing `ReviewStore` protocol
-- [ ] Deploy Streamlit app as a Databricks App (app.yaml present)
 
-## Milestone 3 — optional LLM evidence extractor
+## Milestone 3 — optional LLM evidence extractor ✅ code-complete (2026-07-18)
 
-- [ ] `LlmEvidenceExtractor` implementing the same interface as `extract_evidence`
-- [ ] Sentence-level evidence selection + unclear-claim categorisation
-- [ ] Deterministic validation stays mandatory on top of LLM output
-- [ ] Side-by-side eval: deterministic vs LLM extraction on a labelled sample
+- [x] `LlmEvidenceExtractor` implementing the same interface as `extract_evidence`
+      (same `EvidenceResult` model, provenance recorded)
+- [x] Sentence-level evidence selection with **verified source-anchored quotes**;
+      hallucinated fragments dropped + flagged; unclear-claim categorisation + explanation
+- [x] Deterministic validation, scoring and classification stay mandatory on LLM output
+- [x] Side-by-side eval script: scripts/run_llm_extraction.py (stratified sample,
+      agreement metrics)
+- [ ] Run the comparison with a real OPENAI_API_KEY and review disagreements
 
 ## Backlog / known limitations
 
