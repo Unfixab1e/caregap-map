@@ -29,14 +29,13 @@ from caregap_map.config import (  # noqa: E402
     REGION_DATA_DESERT,
     SUBTYPE_GENERAL,
     SUBTYPE_LABELS,
-    default_paths,
     load_env_file,
     load_scoring_config,
 )
 
 load_env_file()  # .env overrides nothing that is already in the environment
 from caregap_map.data_access import MissingDataError, get_data_source  # noqa: E402
-from caregap_map.persistence import ReviewNote, SqliteReviewStore  # noqa: E402
+from caregap_map.persistence import ReviewNote, ReviewStore, get_review_store  # noqa: E402
 
 # Status colors (validated with the dataviz palette checker, severity order:
 # trusted -> review -> gap -> no data so green/red are never adjacent).
@@ -67,8 +66,10 @@ def load_data():
 
 
 @st.cache_resource
-def note_store() -> SqliteReviewStore:
-    return SqliteReviewStore(default_paths().reviews_db)
+def note_store() -> ReviewStore:
+    # CAREGAP_REVIEW_STORE=sqlite (local default) | databricks (Delta table,
+    # survives app restarts - required for the deployed app).
+    return get_review_store()
 
 
 def status_banner(status: str, reason: str) -> None:
@@ -419,7 +420,8 @@ def main() -> None:
         notes_panel(
             "facility",
             row["unique_id"],
-            "Notes are stored locally in data/reviews.db (SQLite).",
+            "Notes persist in the configured review store (SQLite locally, "
+            "Delta table on Databricks) and survive page refreshes.",
         )
 
     # ---------------- Region-level notes ----------------

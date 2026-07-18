@@ -85,7 +85,32 @@ env:
 3. Grant the app's service principal `USE CATALOG` / `USE SCHEMA` / `SELECT` on
    `main.caregap` (grants block in the SQL file), then redeploy.
 
-## 4. Re-running the pipeline on Databricks (optional)
+## 4. Durable reviewer notes (required for the deployed app)
+
+The app filesystem is ephemeral - SQLite notes would vanish on restart. The deployed
+app must use the Delta-backed store:
+
+```yaml
+env:
+  - name: CAREGAP_REVIEW_STORE
+    value: "databricks"
+  # plus the SQL-warehouse settings from Path B (host/http-path/credentials)
+```
+
+`DeltaReviewStore` creates `main.caregap.review_notes` on first use and writes with
+parameterised queries only. Grant the app's service principal `USE CATALOG`,
+`USE SCHEMA`, `SELECT` and `MODIFY` on the schema (or table). Note-writing therefore
+needs a SQL warehouse even when facility data is read via Path A.
+
+**Acceptance test (run in the live app):** save a district note -> refresh the page ->
+the note remains -> redeploy the app -> the note still remains -> repeat for a
+facility note.
+
+If SQL-warehouse writes are impractical in your workspace tier, keep
+`CAREGAP_REVIEW_STORE=sqlite` and state clearly in the demo that notes are
+session-durable only until restart - do not silently rely on the app filesystem.
+
+## 5. Re-running the pipeline on Databricks (optional)
 
 The pipeline is plain pandas — it runs anywhere Python runs:
 
