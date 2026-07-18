@@ -229,6 +229,14 @@ def facility_detail(row: pd.Series) -> None:
         c1.metric("Capability evidence", f"{row['capability_evidence_score']} / 100")
         c2.metric("Data completeness", f"{row['data_completeness_score']} / 100")
 
+        corroboration = json.loads(row.get("corroboration_categories_json") or "[]")
+        min_corr = load_scoring_config().thresholds.min_corroboration_categories
+        st.markdown(
+            f"**Independent corroboration:** "
+            f"{', '.join(corroboration) if corroboration else 'none'} "
+            f"({len(corroboration)} of {min_corr} required for Trusted)"
+        )
+
         ev_comp = json.loads(row["evidence_components_json"])
         comp_comp = json.loads(row["completeness_components_json"])
         st.markdown("**Score breakdown**")

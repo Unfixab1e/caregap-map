@@ -119,3 +119,50 @@ Catalog volume through the unchanged `LocalDataSource` (fastest, fewest moving p
 connector, and takes an injectable connection factory so it is unit-testable without a
 workspace. The deployment steps are documented but not yet executed against a live
 workspace (no credentials on the dev machine) — recorded honestly in TASKS.md.
+
+## D14 — Trusted requires independent corroboration (calibration)
+
+The manual review of the real-API LLM disagreements exposed a false-Trusted pattern: one
+phrase containing "critical care" (e.g. inside a specialty enumeration or a staff list)
+matches both the explicit-claim group and the procedure group, double-counting to 35+15 =
+50 — exactly over the Trusted bar (observed on Fortis Kangra, Kirloskar Hospital).
+
+**Decision:** Trusted now additionally requires (a) an explicit intensive-care claim and
+(b) at least `min_corroboration_categories` (default 2, configurable) independent
+corroboration categories among: equipment, procedure, staffing, anchored ICU bed count,
+multi-field evidence. A signal produced by a pattern that also belongs to the
+explicit-claim group does not count — one marketing phrase must not corroborate itself.
+Distinct keywords inside one sentence ("ICU" + "ventilator") still count, because they
+are different evidence.
+
+**Before/after on the full dataset (10,077 facilities):**
+Trusted 2,006 → 535; Needs Human Review 1,064 → 2,535; Likely Medical Gap and
+Insufficient Data unchanged (6,890 / 117). Every demoted record moved to review — none
+flipped to "gap", so the change cannot manufacture medical deserts. The demotion is
+deliberately aggressive against false-Trusted risk (the product's worst failure mode);
+planners see the 2,535 as an explicit verification worklist. Restoring looser behaviour
+is one config value (`min_corroboration_categories: 1`), and the human-labelled
+evaluation (evals/) exists to tune this with ground truth rather than taste.
+
+## D15 — LLM bed counts must be re-derivable from one verified fragment
+
+A model-reported ICU bed count is accepted only when the shared deterministic anchoring
+patterns (number + bed word + ICU context together in one passage) re-derive it from a
+verified fragment. "10 ventilators" + "ICU available" across fragments never yields 10
+ICU beds; mismatching or unanchorable payload counts raise suspicious flags.
+
+## D16 — ICU subtypes are surfaced, never equated
+
+NICU/PICU/ICCU/MICU/SICU claims are detected via configurable patterns over
+explicit-claim fragments (identically for both extractors) and shown in the drilldown.
+A record whose only intensive-care evidence is a specialised subtype displays
+"Intensive-care evidence found: NICU (neonatal) only — no general adult ICU claim";
+no clinical-equivalence rules are applied.
+
+## D17 — MLflow tracing deferred
+
+The app's drilldown already exposes the full audit chain (source fields → extractor
+provenance → verified fragments → subtype detection → validator flags → score components
+→ classification → regional aggregation) directly in the UI, and every stage is stored in
+the processed Parquet. MLflow run/trace logging is deferred until after the live
+deployment is stable, per the milestone priority order.

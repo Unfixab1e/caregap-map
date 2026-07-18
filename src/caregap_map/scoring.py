@@ -15,6 +15,7 @@ All weights and thresholds come from :class:`caregap_map.config.ScoringConfig`.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -50,6 +51,7 @@ class FacilityScore(BaseModel):
     validation_flags: list[ValidationFlag] = Field(default_factory=list)
     evidence_components: dict[str, int] = Field(default_factory=dict)
     completeness_components: dict[str, int] = Field(default_factory=dict)
+    corroboration_categories: list[str] = Field(default_factory=list)
 
     @property
     def contradiction_flags(self) -> list[str]:
@@ -114,17 +116,60 @@ def compute_completeness_score(
     return score, components
 
 
+def count_corroboration_categories(
+    evidence: EvidenceResult, config: ScoringConfig
+) -> tuple[int, list[str]]:
+    """Count INDEPENDENT corroboration categories behind an ICU claim.
+
+    Categories: equipment, procedure, staffing, anchored bed count, and
+    multi-field (evidence across >= 3 source fields). A fragment produced by
+    a pattern that also belongs to the explicit-claim group (e.g. ``critical
+    care`` matching both explicit and procedure) is NOT independent - one
+    marketing phrase must not corroborate itself. For LLM fragments
+    (pattern == "llm") the same idea applies via text identity plus the
+    group's non-explicit keyword patterns.
+    """
+    explicit_patterns = set(config.keywords.explicit_icu)
+    explicit_texts = {
+        f.text for f in evidence.supporting_text_fragments if f.group == "explicit_icu"
+    }
+
+    def fragment_independent(frag, group: str) -> bool:
+        if frag.pattern != "llm":
+            return frag.pattern not in explicit_patterns
+        if frag.text not in explicit_texts:
+            return True
+        non_explicit = [
+            p for p in getattr(config.keywords, group) if p not in explicit_patterns
+        ]
+        return any(re.search(p, frag.text, re.IGNORECASE) for p in non_explicit)
+
+    categories: list[str] = []
+    for group in ("equipment", "procedure", "staffing"):
+        frags = [f for f in evidence.supporting_text_fragments if f.group == group]
+        if any(fragment_independent(f, group) for f in frags):
+            categories.append(group)
+    if evidence.icu_bed_count is not None:
+        categories.append("bed_count")
+    if evidence.explicit_icu_claim and len(evidence.supporting_fields) >= 3:
+        categories.append("multi_field")
+    return len(categories), categories
+
+
 def classify(
     evidence_score: int,
     completeness_score: int,
     has_contradiction: bool,
     has_suspicious: bool,
     config: ScoringConfig,
+    explicit_claim: bool = False,
+    corroboration_categories: int = 0,
 ) -> tuple[str, str]:
     """Map the two scores plus validator outcomes to one of the four classes.
 
     Order of precedence (documented in DECISIONS.md):
-    contradictions first, then judgeability, then evidence strength.
+    contradictions first, then judgeability, then evidence strength gated by
+    independent corroboration (D14).
     """
     t = config.thresholds
     if has_contradiction:
@@ -141,10 +186,24 @@ def classify(
                 CLASS_NEEDS_REVIEW,
                 "Evidence is strong but at least one claim looks unreliable; verify before trusting.",
             )
+        if not explicit_claim:
+            return (
+                CLASS_NEEDS_REVIEW,
+                "ICU-adjacent signals without an explicit intensive-care claim; verify on site.",
+            )
+        if corroboration_categories < t.min_corroboration_categories:
+            return (
+                CLASS_NEEDS_REVIEW,
+                f"Explicit claim backed by only {corroboration_categories} independent "
+                f"corroboration categor{'y' if corroboration_categories == 1 else 'ies'} "
+                f"({t.min_corroboration_categories} required for trust); a single phrase "
+                "must not corroborate itself.",
+            )
         return (
             CLASS_TRUSTED,
             f"Evidence score {evidence_score} meets the trust threshold ({t.high_evidence}) "
-            "with sufficient data.",
+            f"with sufficient data and {corroboration_categories} independent corroboration "
+            "categories.",
         )
     if evidence_score <= t.low_evidence:
         return (
@@ -180,12 +239,15 @@ def score_facility(
     flags = validate_facility(record, evidence, config, is_name_duplicate=is_name_duplicate)
     evidence_score, ev_components = compute_evidence_score(evidence, config)
     completeness_score, comp_components = compute_completeness_score(record, config)
+    n_corroboration, corroboration = count_corroboration_categories(evidence, config)
     classification, reason = classify(
         evidence_score,
         completeness_score,
         has_contradiction=has_severity(flags, SEV_CONTRADICTION),
         has_suspicious=has_severity(flags, SEV_SUSPICIOUS),
         config=config,
+        explicit_claim=evidence.explicit_icu_claim,
+        corroboration_categories=n_corroboration,
     )
     return FacilityScore(
         capability_evidence_score=evidence_score,
@@ -196,6 +258,7 @@ def score_facility(
         validation_flags=flags,
         evidence_components=ev_components,
         completeness_components=comp_components,
+        corroboration_categories=corroboration,
     )
 
 
@@ -231,6 +294,8 @@ def score_dataframe(df: pd.DataFrame, config: ScoringConfig | None = None) -> pd
                 "explicit_icu_claim": s.evidence.explicit_icu_claim,
                 "icu_bed_count": s.evidence.icu_bed_count,
                 "icu_subtypes_json": json.dumps(s.evidence.icu_subtypes),
+                "n_corroboration_categories": len(s.corroboration_categories),
+                "corroboration_categories_json": json.dumps(s.corroboration_categories),
                 "n_contradiction_flags": len(s.contradiction_flags),
                 "n_validation_flags": len(s.validation_flags),
                 "evidence_fragments_json": json.dumps(

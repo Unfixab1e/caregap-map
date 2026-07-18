@@ -41,9 +41,19 @@ SUBTYPE_LABELS = {
     SUBTYPE_GENERAL: "general / unspecified ICU",
 }
 
-# Region-level labels reuse the facility labels, but "Insufficient Data"
-# is presented as a data desert at region level.
-REGION_DATA_DESERT = "Insufficient Data / Data Desert"
+# Region-level status labels. Deliberately DIFFERENT wording from the
+# facility classes: a region containing one trusted facility has trusted
+# EVIDENCE, not sufficient coverage - the labels must never imply adequacy,
+# population need, bed availability, travel time or clinical verification.
+REGION_TRUSTED = "Trusted ICU evidence found"
+REGION_PLANNING_GAP = "Potential planning gap"
+REGION_DATA_DESERT = "Insufficient data to assess"
+REGION_NEEDS_REVIEW = "Needs facility verification"
+
+REGION_DISCLAIMER = (
+    "This does not measure population need, bed availability, travel time, "
+    "physical accessibility, or clinically verified service status."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +262,12 @@ class Thresholds(BaseModel):
     high_evidence: int = 45  # >= this (with sufficient data) -> Trusted ICU Coverage
     low_evidence: int = 15  # <= this (with sufficient data) -> Likely Medical Gap
     # Between low_evidence and high_evidence the record is ambiguous -> Needs Human Review.
+    # Trusted additionally requires an explicit claim corroborated by at least
+    # this many INDEPENDENT categories (equipment / procedure / staffing /
+    # anchored bed count / multi-field). A signal produced by the same pattern
+    # as the explicit claim itself (e.g. "critical care" matching both the
+    # explicit and the procedure group) does not count as corroboration.
+    min_corroboration_categories: int = 2
 
     # Region level
     region_min_facilities: int = 3  # fewer records than this -> data desert
