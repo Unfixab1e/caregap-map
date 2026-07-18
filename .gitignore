@@ -38,6 +38,8 @@ htmlcov/
 
 # Databricks CLI sync state
 .databricks/
+# Volume data cache (app runtime / local testing)
+.volume_cache/
 
 # --- Editors / OS ---
 .vscode/

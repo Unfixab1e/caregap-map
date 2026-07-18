@@ -10,8 +10,10 @@ command: ["streamlit", "run", "app.py"]
 env:
   - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS
     value: "false"
+  # "volume": fetch processed Parquet from the UC volume via the Files API
+  # (Apps containers do not FUSE-mount /Volumes) and cache locally.
   - name: CAREGAP_DATA_SOURCE
-    value: "local"
+    value: "volume"
   - name: CAREGAP_DATA_DIR
     value: "/Volumes/workspace/caregap/caregap_data"
   - name: CAREGAP_REVIEW_STORE

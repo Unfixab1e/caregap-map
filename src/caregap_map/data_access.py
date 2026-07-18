@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol
 
 import pandas as pd
@@ -154,6 +155,74 @@ class DatabricksDataSource:
         return self._read_table(f"region_summary_{level}")
 
 
+class VolumeDataSource(LocalDataSource):
+    """Reads processed Parquet from a Unity Catalog volume via the Files API.
+
+    Databricks Apps containers do NOT mount ``/Volumes`` as a filesystem
+    (unlike notebooks/clusters), so the volume files are downloaded once into
+    a local cache directory using the app service principal's injected
+    credentials, then read like any local data. New uploads are picked up on
+    app restart (the cache lives on the ephemeral app filesystem).
+    """
+
+    _FILES = (
+        "facilities_scored.parquet",
+        "region_summary_state.parquet",
+        "region_summary_district.parquet",
+    )
+
+    def __init__(
+        self,
+        volume_dir: str | None = None,
+        cache_dir: str | Path | None = None,
+        files_client_factory: Callable[[], Any] | None = None,
+    ) -> None:
+        volume = volume_dir or os.environ.get("CAREGAP_DATA_DIR", "")
+        if not volume.startswith("/Volumes/"):
+            raise MissingDataError(
+                f"CAREGAP_DATA_SOURCE=volume needs CAREGAP_DATA_DIR to point at a "
+                f"/Volumes/... path, got {volume!r}."
+            )
+        cache = Path(cache_dir or os.environ.get("CAREGAP_VOLUME_CACHE", ".volume_cache"))
+        super().__init__(DataPaths(data_dir=cache))
+        self._volume_dir = volume.rstrip("/")
+        self._files_client_factory = files_client_factory
+
+    def _files_client(self):
+        if self._files_client_factory is not None:
+            return self._files_client_factory()
+        try:
+            from databricks.sdk import WorkspaceClient
+        except ImportError as exc:
+            raise ImportError(
+                "The 'databricks-sdk' package is required for the volume data "
+                'source. Install it with: pip install -e ".[databricks]"'
+            ) from exc
+        # Auth from the environment: app service principal (DATABRICKS_HOST +
+        # DATABRICKS_CLIENT_ID/SECRET, injected by Databricks Apps) or a
+        # user token locally (DATABRICKS_HOST + DATABRICKS_TOKEN).
+        return WorkspaceClient().files
+
+    def _download(self, filename: str, destination: Path) -> None:
+        source = f"{self._volume_dir}/processed/{filename}"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        response = self._files_client().download(source)
+        tmp = destination.with_suffix(destination.suffix + ".tmp")
+        with open(tmp, "wb") as fh:
+            fh.write(response.contents.read())
+        tmp.replace(destination)
+
+    def _require(self, path: Path, hint: str) -> None:
+        if not path.exists() and path.name in self._FILES:
+            try:
+                self._download(path.name, path)
+            except Exception as exc:
+                raise MissingDataError(
+                    f"Could not fetch {path.name} from {self._volume_dir}/processed via the Files API: {exc}"
+                ) from exc
+        super()._require(path, hint)
+
+
 def get_data_source() -> DataSource:
     """Build the configured data source.
 
@@ -165,6 +234,8 @@ def get_data_source() -> DataSource:
     mode = os.environ.get("CAREGAP_DATA_SOURCE", "local").strip().lower()
     if mode == "databricks":
         return DatabricksDataSource()
+    if mode == "volume":
+        return VolumeDataSource()
     if mode == "local":
         return LocalDataSource()
-    raise ValueError(f"Unknown CAREGAP_DATA_SOURCE: {mode!r} (expected 'local' or 'databricks')")
+    raise ValueError(f"Unknown CAREGAP_DATA_SOURCE: {mode!r} (expected 'local', 'volume' or 'databricks')")
