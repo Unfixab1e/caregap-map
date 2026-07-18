@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -130,6 +131,64 @@ def classification_chart(df: pd.DataFrame, group_col: str, title: str) -> None:
         yaxis_title=None,
     )
     st.plotly_chart(fig, width="stretch")
+
+
+def facility_map(subset: pd.DataFrame) -> str | None:
+    """Facility point map; returns a map-selected unique_id, if any.
+
+    Deliberately a POINT map, not a choropleth: it shows where evidence-
+    carrying records sit, and must not imply population-adjusted access or
+    verified clinical capability. Facilities without valid coordinates are
+    counted below the map and remain fully accessible in the table.
+    """
+    located = subset[subset["coord_status"] == "ok"].copy()
+    unlocated = len(subset) - len(located)
+    if located.empty:
+        st.info("No facilities with valid coordinates in this selection - use the table.")
+        return None
+
+    located["status"] = located["classification"].map(lambda c: f"{CLASS_ICONS.get(c, '')} {c}")
+    order = [f"{CLASS_ICONS[c]} {c}" for c in CLASS_STACK_ORDER]
+    colors = {f"{CLASS_ICONS[c]} {c}": CLASS_COLORS[c] for c in CLASS_STACK_ORDER}
+    fig = px.scatter_map(
+        located,
+        lat="lat_parsed",
+        lon="lon_parsed",
+        color="status",
+        category_orders={"status": order},
+        color_discrete_map=colors,
+        hover_name="name",
+        hover_data={
+            "lat_parsed": False,
+            "lon_parsed": False,
+            "status": True,
+            "capability_evidence_score": True,
+            "data_completeness_score": True,
+        },
+        custom_data=["unique_id"],
+        zoom=3.5,
+        height=520,
+    )
+    fig.update_layout(
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.0},
+        margin={"l": 0, "r": 0, "t": 30, "b": 0},
+        map_style="open-street-map",
+    )
+    event = st.plotly_chart(
+        fig, width="stretch", on_select="rerun", selection_mode="points", key="facility_map"
+    )
+    st.caption(
+        f"{len(located)} located facility records; **{unlocated} without valid coordinates "
+        "are NOT on this map** but appear in the table below. Points show record locations "
+        "and evidence status only - not travel time, population need or verified capability."
+    )
+    try:
+        points = event.selection.points  # type: ignore[union-attr]
+        if points:
+            return points[0]["customdata"][0]
+    except (AttributeError, KeyError, IndexError, TypeError):
+        pass
+    return None
 
 
 def metrics_row(summary: dict) -> None:
@@ -362,10 +421,7 @@ def main() -> None:
     status_banner(summary["region_status"], summary["region_status_reason"])
     st.caption(f"⚠️ {REGION_DISCLAIMER}")
     if state == "All India" or not district:
-        st.caption(
-            "State-level numbers are high-level summaries — select a district for the "
-            "planning view."
-        )
+        st.caption("State-level numbers are high-level summaries — select a district for the planning view.")
     metrics_row(summary)
 
     if summary["region_status"] == REGION_DATA_DESERT and summary["facility_count"] > 0:
@@ -387,6 +443,11 @@ def main() -> None:
             "region",
             f"Facility classifications by district - {state}",
         )
+
+    # ---------------- Facility map (optional; table stays primary) ----------
+    map_selected_id: str | None = None
+    with st.expander("🗺️ Facility evidence map (beta)", expanded=False):
+        map_selected_id = facility_map(subset)
 
     # ---------------- Facility table ----------------
     st.header("Facilities behind this result")
@@ -435,7 +496,12 @@ def main() -> None:
             f"{r['name']} - {r.get('address_city') or '?'} ({r['unique_id'][:8]})": idx
             for idx, r in table.iterrows()
         }
-        choice = st.selectbox("Inspect a facility", list(options.keys()))
+        default_index = 0
+        if map_selected_id is not None:
+            ids = table["unique_id"].tolist()
+            if map_selected_id in ids:
+                default_index = ids.index(map_selected_id)
+        choice = st.selectbox("Inspect a facility", list(options.keys()), index=default_index)
         row = table.loc[options[choice]]
         facility_detail(row)
         st.divider()

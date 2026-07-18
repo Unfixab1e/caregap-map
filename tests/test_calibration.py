@@ -7,11 +7,10 @@ corroboration and alone reach the Trusted bar.
 
 import json
 
-from conftest import make_record
-
 from caregap_map.config import CLASS_NEEDS_REVIEW, CLASS_TRUSTED, ScoringConfig
-from caregap_map.scoring import count_corroboration_categories, score_facility
 from caregap_map.evidence import extract_evidence
+from caregap_map.scoring import count_corroboration_categories, score_facility
+from conftest import make_record
 
 
 class TestIndependentCorroboration:

@@ -203,9 +203,7 @@ class DeltaReviewStore:
         )
         return note.model_copy(update={"id": note_id, "created_at": created_at})
 
-    def list_notes(
-        self, scope_type: str | None = None, scope_id: str | None = None
-    ) -> list[ReviewNote]:
+    def list_notes(self, scope_type: str | None = None, scope_id: str | None = None) -> list[ReviewNote]:
         query = f"SELECT id, created_at, scope_type, scope_id, note, author FROM {self._qualified}"
         clauses, params = [], {}
         if scope_type is not None:

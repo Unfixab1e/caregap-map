@@ -3,9 +3,9 @@
 import json
 
 import pytest
-from conftest import make_record
 
 from caregap_map.evidence import extract_icu_bed_count
+from conftest import make_record
 
 
 class TestDeterministicAnchoring:
@@ -50,9 +50,8 @@ class TestLlmBedCountAnchoring:
     """The model's reported count must be re-derivable from verified fragments."""
 
     def _extract(self, record, payload, config):
-        from test_llm_extraction import StubClient, llm_payload
-
         from caregap_map.llm_extraction import LlmEvidenceExtractor
+        from test_llm_extraction import StubClient, llm_payload
 
         client = StubClient(llm_payload(**payload))
         return LlmEvidenceExtractor(client, config).extract(record)

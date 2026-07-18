@@ -98,9 +98,7 @@ def evaluate_labels(df: pd.DataFrame) -> dict:
     # Subtype-specific errors: reviewer recorded a subtype differing from the
     # extractor's (free-text comparison, case-insensitive).
     if "subtype" in labelled.columns and "extractor_subtypes" in labelled.columns:
-        sub = labelled[
-            labelled["subtype"].notna() & (labelled["subtype"].astype(str).str.strip() != "")
-        ]
+        sub = labelled[labelled["subtype"].notna() & (labelled["subtype"].astype(str).str.strip() != "")]
         mismatches = [
             {
                 "unique_id": r["unique_id"],
@@ -108,8 +106,7 @@ def evaluate_labels(df: pd.DataFrame) -> dict:
                 "extractor_subtypes": r["extractor_subtypes"],
             }
             for _, r in sub.iterrows()
-            if str(r["subtype"]).strip().lower()
-            not in str(r.get("extractor_subtypes", "")).lower()
+            if str(r["subtype"]).strip().lower() not in str(r.get("extractor_subtypes", "")).lower()
         ]
         report["subtype_mismatches"] = mismatches
 
@@ -122,7 +119,6 @@ def evaluate_labels(df: pd.DataFrame) -> dict:
             "rationale": r.get("reviewer_rationale"),
         }
         for _, r in labelled.iterrows()
-        if str(r["current_classification"]).strip()
-        != str(r["human_expected_classification"]).strip()
+        if str(r["current_classification"]).strip() != str(r["human_expected_classification"]).strip()
     ]
     return report

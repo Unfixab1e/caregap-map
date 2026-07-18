@@ -295,9 +295,7 @@ class LlmEvidenceExtractor:
         # ICU/intensive-care context (deterministic anchoring, shared with
         # the baseline extractor). A number that merely co-occurs with ICU
         # across fragments ("10 ventilators" + "ICU available") never counts.
-        anchored = extract_icu_bed_count(
-            [f.text for f in result.supporting_text_fragments], self._config
-        )
+        anchored = extract_icu_bed_count([f.text for f in result.supporting_text_fragments], self._config)
         payload_count = payload.get("icu_bed_count")
         if anchored is not None:
             result.icu_bed_count = anchored

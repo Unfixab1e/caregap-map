@@ -61,23 +61,17 @@ def main() -> int:
 
     picked: list[pd.DataFrame] = []
     for cls, n in STRATA.items():
-        picked.append(
-            scored[scored["classification"] == cls].sort_values("unique_id").head(n)
-        )
+        picked.append(scored[scored["classification"] == cls].sort_values("unique_id").head(n))
     # Every det-vs-LLM disagreement.
-    disagree_ids = [
-        uid
-        for uid, llm_cls in llm_by_id.items()
-        if isinstance(llm_cls, str) and llm_cls
-    ]
+    disagree_ids = [uid for uid, llm_cls in llm_by_id.items() if isinstance(llm_cls, str) and llm_cls]
     dis = scored[scored["unique_id"].isin(disagree_ids)]
     dis = dis[dis["classification"] != dis["unique_id"].map(llm_by_id)]
     picked.append(dis)
     # Specialised-subtype diversity (records whose subtypes exclude general).
     subtyped = scored[
-        scored["icu_subtypes_json"].fillna("[]").apply(
-            lambda s: bool(json.loads(s)) and "general_or_unspecified" not in json.loads(s)
-        )
+        scored["icu_subtypes_json"]
+        .fillna("[]")
+        .apply(lambda s: bool(json.loads(s)) and "general_or_unspecified" not in json.loads(s))
     ]
     picked.append(subtyped.sort_values("unique_id").head(N_SUBTYPE_EXTRA))
 

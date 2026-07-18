@@ -2,10 +2,9 @@
 
 import json
 
-from conftest import make_record
-
 from caregap_map.config import SUBTYPE_GENERAL
 from caregap_map.evidence import extract_evidence
+from conftest import make_record
 
 
 class TestSubtypeDetection:
@@ -55,9 +54,8 @@ class TestSubtypeDetection:
 
 class TestLlmSubtypes:
     def test_llm_fragments_get_same_subtype_semantics(self, config):
-        from test_llm_extraction import StubClient, llm_payload
-
         from caregap_map.llm_extraction import LlmEvidenceExtractor
+        from test_llm_extraction import StubClient, llm_payload
 
         record = make_record(capability=json.dumps(["Level III NICU with ventilators"]))
         client = StubClient(

@@ -61,9 +61,7 @@ class TestDeltaReviewStore:
     def test_add_note_uses_parameters_never_interpolation(self):
         store, log = make_store()
         malicious = "'); DROP TABLE review_notes; --"
-        saved = store.add_note(
-            ReviewNote(scope_type="district", scope_id="Kerala/Ernakulam", note=malicious)
-        )
+        saved = store.add_note(ReviewNote(scope_type="district", scope_id="Kerala/Ernakulam", note=malicious))
         sql, params = log[-1]
         assert "INSERT INTO `main`.`caregap`.`review_notes`" in sql
         assert ":note" in sql

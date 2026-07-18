@@ -191,9 +191,7 @@ def detect_icu_subtypes(fragments: list[EvidenceFragment], config: ScoringConfig
     no clinical-equivalence judgment, and NICU/PICU/ICCU evidence must never
     be presented as confirmed general adult ICU.
     """
-    subtype_patterns = {
-        name: _compile(tuple(pats)) for name, pats in config.keywords.subtypes.items()
-    }
+    subtype_patterns = {name: _compile(tuple(pats)) for name, pats in config.keywords.subtypes.items()}
     found: set[str] = set()
     for frag in fragments:
         if frag.group != "explicit_icu":

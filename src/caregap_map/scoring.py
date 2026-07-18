@@ -116,9 +116,7 @@ def compute_completeness_score(
     return score, components
 
 
-def count_corroboration_categories(
-    evidence: EvidenceResult, config: ScoringConfig
-) -> tuple[int, list[str]]:
+def count_corroboration_categories(evidence: EvidenceResult, config: ScoringConfig) -> tuple[int, list[str]]:
     """Count INDEPENDENT corroboration categories behind an ICU claim.
 
     Categories: equipment, procedure, staffing, anchored bed count, and
@@ -130,18 +128,14 @@ def count_corroboration_categories(
     group's non-explicit keyword patterns.
     """
     explicit_patterns = set(config.keywords.explicit_icu)
-    explicit_texts = {
-        f.text for f in evidence.supporting_text_fragments if f.group == "explicit_icu"
-    }
+    explicit_texts = {f.text for f in evidence.supporting_text_fragments if f.group == "explicit_icu"}
 
     def fragment_independent(frag, group: str) -> bool:
         if frag.pattern != "llm":
             return frag.pattern not in explicit_patterns
         if frag.text not in explicit_texts:
             return True
-        non_explicit = [
-            p for p in getattr(config.keywords, group) if p not in explicit_patterns
-        ]
+        non_explicit = [p for p in getattr(config.keywords, group) if p not in explicit_patterns]
         return any(re.search(p, frag.text, re.IGNORECASE) for p in non_explicit)
 
     categories: list[str] = []
