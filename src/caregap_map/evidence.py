@@ -12,7 +12,7 @@ proof of real clinical capability. Scoring and the UI both surface this.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from typing import Any
 
@@ -169,24 +169,35 @@ def extract_evidence(record: Mapping[str, Any], config: ScoringConfig) -> Eviden
     result.supporting_fields = sorted(supporting_fields)
 
     # ICU bed counts (capacity signal).
-    bed_counts: list[int] = []
-    for patterns in [_compile(tuple(kw.icu_bed_count))]:
-        for items in texts.values():
-            for item in items:
-                for pattern in patterns:
-                    for m in pattern.finditer(item):
-                        try:
-                            bed_counts.append(int(m.group(1)))
-                        except (ValueError, IndexError):
-                            continue
-    if bed_counts:
-        result.icu_bed_count = max(bed_counts)
-        result.capacity_signal = True
+    all_items = [item for items in texts.values() for item in items]
+    result.icu_bed_count = extract_icu_bed_count(all_items, config)
+    result.capacity_signal = result.icu_bed_count is not None
 
     apply_consistency_checks(record, result)
     result.missing_evidence = build_missing_evidence(texts, result)
 
     return result
+
+
+def extract_icu_bed_count(texts: Iterable[str], config: ScoringConfig) -> int | None:
+    """Extract an ICU bed count that is properly anchored in ONE text passage.
+
+    The configured ``icu_bed_count`` patterns require the number, a bed word
+    and ICU/intensive-care context to occur together - a number that merely
+    co-occurs with ICU elsewhere ("10 ventilators; ICU available") never
+    counts. Shared by the deterministic extractor and by the LLM extractor's
+    verification step. Returns the largest anchored count, else ``None``.
+    """
+    patterns = _compile(tuple(config.keywords.icu_bed_count))
+    counts: list[int] = []
+    for item in texts:
+        for pattern in patterns:
+            for m in pattern.finditer(item):
+                try:
+                    counts.append(int(m.group(1)))
+                except (ValueError, IndexError):
+                    continue
+    return max(counts) if counts else None
 
 
 def apply_consistency_checks(record: Mapping[str, Any], result: EvidenceResult) -> None:

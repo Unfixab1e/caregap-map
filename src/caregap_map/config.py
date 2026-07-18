@@ -159,10 +159,13 @@ class EvidenceKeywords(BaseModel):
         r"\bdoes\s+not\s+(have|offer|provide)\s+(an?\s+)?(icu|intensive\s+care)",
     ]
     # Patterns that extract an ICU bed count (first capture group = count).
+    # Each pattern requires the number, a bed word and ICU/intensive-care
+    # context TOGETHER in one passage - that adjacency is the anchoring rule.
     icu_bed_count: list[str] = [
-        r"(\d{1,4})\s*(?:-|\s)?bed(?:ded)?\s+(?:[a-z]*\s+)?icu",
-        r"(\d{1,4})\s*(?:-|\s)?bed(?:ded)?\s+(?:[a-z]*\s+)?(?:intensive|critical)\s+care",
+        r"(\d{1,4})\s*-?\s*bed(?:ded)?\s+(?:[a-z]*\s+)?icu",
+        r"(\d{1,4})\s*-?\s*bed(?:ded)?\s+(?:[a-z]*\s+)?(?:intensive|critical)\s+care",
         r"icu[^.;]{0,30}?(\d{1,4})\s*beds?",
+        r"(?:intensive|critical)\s+care[^.;]{0,30}?(\d{1,4})\s*beds?",
         r"(\d{1,4})\s*icu\s*beds?",
     ]
 

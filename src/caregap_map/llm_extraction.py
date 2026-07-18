@@ -32,6 +32,7 @@ from .evidence import (
     EvidenceResult,
     apply_consistency_checks,
     build_missing_evidence,
+    extract_icu_bed_count,
     field_texts,
 )
 
@@ -288,13 +289,22 @@ class LlmEvidenceExtractor:
         result.staffing_signals = matched_groups["staffing"]
         result.supporting_fields = sorted(supporting_fields)
 
-        # A bed count must be visible in a verified fragment to be believed.
-        bed_count = payload.get("icu_bed_count")
-        if isinstance(bed_count, int) and any(
-            str(bed_count) in f.text for f in result.supporting_text_fragments
-        ):
-            result.icu_bed_count = bed_count
+        # A bed count is believed only when it can be re-derived from ONE
+        # verified fragment that contains the number together with bed and
+        # ICU/intensive-care context (deterministic anchoring, shared with
+        # the baseline extractor). A number that merely co-occurs with ICU
+        # across fragments ("10 ventilators" + "ICU available") never counts.
+        anchored = extract_icu_bed_count(
+            [f.text for f in result.supporting_text_fragments], self._config
+        )
+        payload_count = payload.get("icu_bed_count")
+        if anchored is not None:
+            result.icu_bed_count = anchored
             result.capacity_signal = True
+            if isinstance(payload_count, int) and payload_count != anchored:
+                result.suspicious_claim_flags.append("llm_bed_count_mismatch")
+        elif isinstance(payload_count, int):
+            result.suspicious_claim_flags.append("llm_bed_count_unanchored")
 
         result.unclear_claims = [str(c) for c in payload.get("unclear_claims", [])][:10]
         result.extraction_explanation = str(payload.get("explanation", "")) or None
