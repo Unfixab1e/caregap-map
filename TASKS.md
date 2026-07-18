@@ -35,7 +35,10 @@
 - [x] Deterministic validation, scoring and classification stay mandatory on LLM output
 - [x] Side-by-side eval script: scripts/run_llm_extraction.py (stratified sample,
       agreement metrics)
-- [ ] Run the comparison with a real OPENAI_API_KEY and review disagreements
+- [x] Comparison run against the real OpenAI API (2026-07-18): 24 stratified records,
+      0 errors, 75% classification agreement, ~$0.005 measured cost; two guardrail
+      improvements came out of the disagreement review (low-information fragment
+      filter, multi-group quotes)
 
 ## Backlog / known limitations
 

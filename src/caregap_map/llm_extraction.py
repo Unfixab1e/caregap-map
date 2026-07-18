@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
+from functools import lru_cache
 from typing import Any, Protocol
 
 from .config import LlmConfig, ScoringConfig
@@ -49,9 +50,11 @@ Rules:
    ICU-relevant procedures (mechanical ventilation, intubation, resuscitation...),
    critical-care staffing (intensivists, ICU nurses...).
 3. If the text DENIES ICU capability (e.g. "has no ICU"), quote it with group "negation".
-4. Report an ICU bed count only if a number of ICU beds is stated in the text.
-5. List claims that are too vague to categorise under unclear_claims.
-6. Do not infer capability from the facility name, size, or reputation.
+4. If one quote supports several groups (e.g. "NICU with ventilator support" is both an
+   explicit ICU claim and equipment evidence), repeat the quote once per group.
+5. Report an ICU bed count only if a number of ICU beds is stated in the text.
+6. List claims that are too vague to categorise under unclear_claims.
+7. Do not infer capability from the facility name, size, or reputation.
 """
 
 # Response contract for OpenAI structured outputs (strict mode).
@@ -177,6 +180,26 @@ def build_user_prompt(texts: dict[str, list[str]]) -> str:
     return "Facility record fields:\n\n" + "\n\n".join(blocks)
 
 
+def is_informative_fragment(text: str, config: ScoringConfig) -> bool:
+    """Reject verified but semantically empty quotes (e.g. "True", "8").
+
+    Substring verification alone cannot catch quotes that exist in the source
+    yet carry no ICU meaning - observed on corrupted, column-shifted records.
+    Multi-token quotes pass; a single token must match one of the configured
+    ICU keyword patterns to count.
+    """
+    if len(text.split()) >= 2:
+        return True
+    kw = config.keywords
+    patterns = _compile_keywords(tuple(kw.explicit_icu + kw.equipment + kw.procedure + kw.staffing))
+    return any(p.search(text) for p in patterns)
+
+
+@lru_cache(maxsize=8)
+def _compile_keywords(patterns: tuple[str, ...]) -> tuple[re.Pattern, ...]:
+    return tuple(re.compile(p, re.IGNORECASE) for p in patterns)
+
+
 def locate_fragment(quote: str, source: str) -> str | None:
     """Find ``quote`` in ``source`` tolerating whitespace differences.
 
@@ -223,6 +246,7 @@ class LlmEvidenceExtractor:
         matched_groups: dict[str, list[str]] = {g: [] for g in _POSITIVE_GROUPS}
         supporting_fields: set[str] = set()
         dropped = 0
+        low_information = 0
 
         for frag in payload.get("fragments", []):
             field = frag.get("field")
@@ -234,6 +258,9 @@ class LlmEvidenceExtractor:
             located = next((loc for item in texts[field] if (loc := locate_fragment(quote, item))), None)
             if located is None:
                 dropped += 1
+                continue
+            if not is_informative_fragment(located, self._config):
+                low_information += 1
                 continue
             result.supporting_text_fragments.append(
                 EvidenceFragment(field=field, group=group, pattern="llm", text=located)
@@ -248,6 +275,9 @@ class LlmEvidenceExtractor:
         if dropped:
             # The model quoted text that does not exist in the record.
             result.suspicious_claim_flags.append(f"llm_unverified_fragments_dropped:{dropped}")
+        if low_information:
+            # Verified but meaningless quotes (e.g. "True" on corrupted rows).
+            result.suspicious_claim_flags.append(f"llm_low_information_fragments_dropped:{low_information}")
 
         # A claim only counts when backed by a verified explicit fragment.
         result.explicit_icu_claim = bool(payload.get("explicit_icu_claim")) and bool(

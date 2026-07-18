@@ -107,6 +107,36 @@ class TestFragmentVerification:
         without_fragment = StubClient(llm_payload(icu_bed_count=99))
         assert LlmEvidenceExtractor(without_fragment, config).extract(record).icu_bed_count is None
 
+    def test_low_information_fragment_dropped(self, config):
+        # Observed on corrupted, column-shifted rows: the model quotes junk
+        # like "True" that IS a verified substring but carries no meaning.
+        record = make_record(capability=json.dumps(["True", "Medical ICU"]))
+        client = StubClient(
+            llm_payload(
+                explicit_icu_claim=True,
+                fragments=[
+                    {"field": "capability", "group": "equipment", "quote": "True"},
+                    {"field": "capability", "group": "explicit_icu", "quote": "Medical ICU"},
+                ],
+            )
+        )
+        result = LlmEvidenceExtractor(client, config).extract(record)
+        texts = [f.text for f in result.supporting_text_fragments]
+        assert texts == ["Medical ICU"]  # junk dropped, real claim kept
+        assert "llm_low_information_fragments_dropped:1" in result.suspicious_claim_flags
+        assert not result.equipment_signals
+
+    def test_single_token_icu_keyword_still_counts(self, config):
+        record = make_record(capability=json.dumps(["ICU"]))
+        client = StubClient(
+            llm_payload(
+                explicit_icu_claim=True,
+                fragments=[{"field": "capability", "group": "explicit_icu", "quote": "ICU"}],
+            )
+        )
+        result = LlmEvidenceExtractor(client, config).extract(record)
+        assert result.explicit_icu_claim
+
     def test_negation_becomes_contradiction(self, config):
         record = make_record(description="The facility has no ICU and refers patients out.")
         client = StubClient(
