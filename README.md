@@ -47,6 +47,19 @@ streamlit run app.py
 `pip install -e .` is optional for running the scripts and app — both bootstrap
 `src/` onto `sys.path` — but recommended for development.
 
+**Two installation surfaces, deliberately separate:**
+
+| Context | Install with | Contents |
+|---|---|---|
+| Local development | `pip install -e ".[dev]"` | package + pytest + ruff |
+| Offline LLM comparison | `pip install -e ".[llm]"` | + openai |
+| Path B (UC tables) local test | `pip install -e ".[databricks]"` | + databricks-sql-connector |
+| **Databricks App runtime** | automatic, from [requirements.txt](requirements.txt) | streamlit, pandas, pyarrow, plotly, pydantic only |
+
+Databricks Apps install from `requirements.txt`, not `pyproject.toml`. The app runtime
+deliberately excludes `openai` (LLM extraction is an offline preprocessing workflow) and
+`databricks-sql-connector` (only needed if the deployed app switches to Path B).
+
 ## What the app does
 
 1. Capability is fixed to **ICU**; pick a state and optionally a district.
