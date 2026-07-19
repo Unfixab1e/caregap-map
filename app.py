@@ -1,9 +1,11 @@
-"""CareGap Map - ICU evidence trust layer for planning in India.
+"""CareGap Map - ICU evidence for public-health planning.
 
-Streamlit app: regional trust-weighted ICU evidence index with
-facility-level evidence drilldown, planning-readiness checklist and
-persistent planning scenarios. Run `python scripts/build_processed_data.py`
-first, then `streamlit run app.py`.
+Streamlit app organised around the NGO planner workflow (D24):
+1 select region -> 2 understand the evidence -> 3 review priority
+facilities -> 4 save a planning scenario. All semantics (scoring,
+classification, aggregation) are consumed, never computed, here.
+Run `python scripts/build_processed_data.py` first, then
+`streamlit run app.py`.
 """
 
 from __future__ import annotations
@@ -49,12 +51,26 @@ from caregap_map.planning import (  # noqa: E402
     assess_operational_data,
     assessment_status,
 )
+from caregap_map.regional_guidance import (  # noqa: E402
+    EVIDENCE_POLICY_CAPTION,
+    EVIDENCE_POLICY_TITLE,
+    decision_path,
+    evidence_policy_lines,
+    regional_guidance,
+    reviewer_action,
+)
 from caregap_map.scenarios import (  # noqa: E402
     ScenarioStore,
     data_snapshot_id,
     get_scenario_store,
     scenario_from_summary,
     scoring_config_fingerprint,
+)
+from caregap_map.ui_components import (  # noqa: E402
+    example_regions,
+    primary_flag,
+    select_priority_facilities,
+    status_distribution,
 )
 from caregap_map.ui_state import desired_region_params, normalize_region_request  # noqa: E402
 
@@ -77,8 +93,51 @@ CLASS_ICONS = {
     REGION_PLANNING_GAP: "🔴",
     REGION_DATA_DESERT: "⚪",
 }
+# Chip backgrounds pair each status color with a text color that keeps
+# WCAG-adequate contrast in BOTH Streamlit themes (chips are solid, so the
+# page theme does not affect their internal contrast). Status is always
+# icon + label + text, never color alone.
+CHIP_STYLE = {
+    REGION_TRUSTED: ("#0a7d0a", "#ffffff"),
+    REGION_NEEDS_REVIEW: ("#fab219", "#1a1a1a"),
+    REGION_PLANNING_GAP: ("#c22f2f", "#ffffff"),
+    REGION_DATA_DESERT: ("#5f5d58", "#ffffff"),
+    CLASS_TRUSTED: ("#0a7d0a", "#ffffff"),
+    CLASS_NEEDS_REVIEW: ("#fab219", "#1a1a1a"),
+    CLASS_LIKELY_GAP: ("#c22f2f", "#ffffff"),
+    CLASS_INSUFFICIENT: ("#5f5d58", "#ffffff"),
+}
 
-st.set_page_config(page_title="CareGap Map", page_icon="🏥", layout="wide")
+WORKFLOW_STEPS = [
+    "Select region",
+    "Understand the evidence",
+    "Review priority facilities",
+    "Save a planning scenario",
+]
+
+st.set_page_config(
+    page_title="CareGap Map",
+    page_icon="🏥",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+_CSS = """
+<style>
+.block-container {padding-top: 1.1rem; padding-bottom: 3rem;}
+.cg-title {font-size: 1.9rem; font-weight: 800; line-height: 1.15; margin: 0;}
+.cg-subtitle {font-size: 1.0rem; opacity: .78; margin: .1rem 0 .55rem 0;}
+.cg-workflow {display: flex; gap: .45rem; flex-wrap: wrap; margin: 0 0 .8rem 0;}
+.cg-step {border: 1px solid rgba(128,128,128,.4); border-radius: 999px;
+          padding: .18rem .75rem; font-size: .86rem; white-space: nowrap;}
+.cg-step b {opacity: .6; margin-right: .35rem; font-weight: 700;}
+.cg-chip {display: inline-block; border-radius: 999px; padding: .28rem .85rem;
+          font-weight: 750; font-size: 1.08rem; letter-spacing: .01em;}
+.cg-counts {font-size: .95rem; opacity: .92; margin-top: .35rem;}
+h1, h2, h3 {letter-spacing: -.01em;}
+div[data-testid="stMetricValue"] {font-size: 1.6rem;}
+</style>
+"""
 
 
 @st.cache_data(show_spinner="Loading processed data ...")
@@ -103,17 +162,23 @@ def scenario_store() -> ScenarioStore:
     return get_scenario_store()
 
 
-def status_banner(status: str, reason: str) -> None:
+def status_chip(status: str) -> str:
+    """Solid status chip: icon + label, never color alone."""
+    bg, fg = CHIP_STYLE.get(status, ("#5f5d58", "#ffffff"))
     icon = CLASS_ICONS.get(status, "⚪")
     label = facility_display_label(status)
-    if status in (CLASS_TRUSTED, REGION_TRUSTED):
-        st.success(f"{icon} **{label}** - {reason}")
-    elif status in (CLASS_LIKELY_GAP, REGION_PLANNING_GAP):
-        st.error(f"{icon} **{label}** - {reason}")
-    elif status in (CLASS_NEEDS_REVIEW, REGION_NEEDS_REVIEW):
-        st.warning(f"{icon} **{label}** - {reason}")
-    else:  # insufficient data / data desert
-        st.info(f"⚪ **{label}** - {reason}")
+    return (
+        f'<span class="cg-chip" style="background:{bg}; color:{fg};">'
+        f"{icon}&nbsp;{label.upper()}</span>"
+    )
+
+
+def workflow_strip() -> None:
+    steps = "".join(
+        f'<span class="cg-step"><b>{i}</b>{label}</span>'
+        for i, label in enumerate(WORKFLOW_STEPS, 1)
+    )
+    st.markdown(f'<div class="cg-workflow">{steps}</div>', unsafe_allow_html=True)
 
 
 def classification_chart(df: pd.DataFrame, group_col: str, title: str) -> None:
@@ -157,6 +222,41 @@ def classification_chart(df: pd.DataFrame, group_col: str, title: str) -> None:
     st.plotly_chart(fig, width="stretch")
 
 
+def distribution_bar(subset: pd.DataFrame) -> None:
+    """100% stacked horizontal evidence-status bar with counts + percentages."""
+    rows = status_distribution(subset)
+    if not any(r["count"] for r in rows):
+        return
+    fig = go.Figure()
+    for r in rows:
+        if not r["count"]:
+            continue
+        fig.add_trace(
+            go.Bar(
+                y=["Evidence status"],
+                x=[r["count"]],
+                name=r["label"],
+                orientation="h",
+                marker={"color": CLASS_COLORS[r["classification"]]},
+                text=f"{r['count']}" if r["pct"] >= 6 else "",
+                textposition="inside",
+                hovertemplate=(
+                    f"{r['label']}: {r['count']} records ({r['pct']}%)<extra></extra>"
+                ),
+            )
+        )
+    fig.update_layout(
+        barmode="stack",
+        height=86,
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        showlegend=True,
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "font": {"size": 11}},
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+    )
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+
 def facility_map(subset: pd.DataFrame) -> str | None:
     """Facility point map; returns a map-selected unique_id, if any.
 
@@ -194,12 +294,12 @@ def facility_map(subset: pd.DataFrame) -> str | None:
             "data_completeness_score": True,
         },
         custom_data=["unique_id"],
-        zoom=3.5,
-        height=520,
+        zoom=7.0,
+        height=380,
     )
     fig.update_layout(
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.0},
-        margin={"l": 0, "r": 0, "t": 30, "b": 0},
+        margin={"l": 0, "r": 0, "t": 10, "b": 0},
         map_style="open-street-map",
     )
     event = st.plotly_chart(
@@ -208,7 +308,8 @@ def facility_map(subset: pd.DataFrame) -> str | None:
     st.caption(
         f"{len(located)} located facility records; **{unlocated} without valid coordinates "
         "are NOT on this map** but appear in the table below. Points show record locations "
-        "and evidence status only - not travel time, population need or verified capability."
+        "and evidence status only - not travel time, population need or verified capability. "
+        "Click a point to open its evidence review."
     )
     try:
         points = event.selection.points  # type: ignore[union-attr]
@@ -219,52 +320,143 @@ def facility_map(subset: pd.DataFrame) -> str | None:
     return None
 
 
+def hero_card(region_label: str, summary: dict) -> None:
+    """The regional assessment card: status, meaning, action, counts."""
+    guidance = regional_guidance(summary["region_status"])
+    with st.container(border=True):
+        st.header(region_label, anchor=False)
+        st.markdown(status_chip(summary["region_status"]), unsafe_allow_html=True)
+        st.markdown(f"**{guidance.meaning}**")
+        st.markdown(f"**Recommended next action** — {guidance.action}")
+        counts = (
+            f"**{summary['facility_count']}** supplied records &nbsp;·&nbsp; "
+            f"🟢 **{summary['trusted_icu_count']}** trusted evidence &nbsp;·&nbsp; "
+            f"🟡 **{summary['needs_review_count']}** need review &nbsp;·&nbsp; "
+            f"🔴 **{summary['likely_gap_count']}** show no ICU evidence &nbsp;·&nbsp; "
+            f"⚪ **{summary['insufficient_data_count']}** insufficient"
+        )
+        st.markdown(f'<div class="cg-counts">{counts}</div>', unsafe_allow_html=True)
+        if summary["region_status"] == REGION_DATA_DESERT and summary["facility_count"] > 0:
+            st.caption(
+                "⚠️ This region is a **data desert**: the records are too thin to judge. "
+                "Treat it as *unknown*, never as an established ICU gap."
+            )
+        st.caption(f"⚠️ {REGION_DISCLAIMER}")
+
+
+def decision_path_row(summary: dict, config) -> None:
+    """'Why this status?' - the regional logic as connected step cards."""
+    st.markdown("**Why this status?**")
+    steps = decision_path(summary, config)
+    cols = st.columns(len(steps))
+    for col, step in zip(cols, steps, strict=True):
+        with col, st.container(border=True):
+            st.caption(step.question)
+            st.markdown(f"{step.icon} **{step.outcome}**", help=step.detail)
+
+
 def metrics_row(summary: dict) -> None:
-    cols = st.columns(5)
+    """Planner-first metric cards; technical metrics live in the expander."""
+    cols = st.columns(4)
     cols[0].metric("Facility records", summary["facility_count"])
     cols[1].metric(
-        f"{CLASS_ICONS[CLASS_TRUSTED]} Trusted ICU evidence",
-        summary["trusted_icu_count"],
-        help="Records meeting the Trusted ICU evidence standard under the current rules.",
-    )
-    cols[2].metric(f"{CLASS_ICONS[CLASS_NEEDS_REVIEW]} Needs review", summary["needs_review_count"])
-    cols[3].metric(
-        f"{CLASS_ICONS[CLASS_LIKELY_GAP]} No ICU evidence",
-        summary["likely_gap_count"],
-        help=(
-            "Judgeable records containing no credible ICU evidence. Many are "
-            "pharmacies, dental practices, labs or small clinics that would not "
-            "be expected to run an ICU - the regional layer, not this count, "
-            "decides whether the pattern becomes a potential planning gap."
-        ),
-    )
-    cols[4].metric(f"{CLASS_ICONS[CLASS_INSUFFICIENT]} Insufficient data", summary["insufficient_data_count"])
-    cols = st.columns(3)
-    cols[0].metric(
         "Judgeable records",
         f"{summary['pct_sufficient_data']:.0f} %",
         help=(
             "Share of records whose fields are populated enough to evaluate what "
             "the record claims (record judgeability). Populated fields are not "
-            "necessarily ICU-informative, and this is NOT planning readiness."
-        ),
-    )
-    cols[1].metric(
-        "Trust-weighted ICU evidence index",
-        f"{summary['trust_weighted_icu_coverage']:.2f}",
-        help=(
-            "0-1 average capability-evidence score weighted by record "
-            "completeness. This is not population or geographic coverage."
+            "necessarily ICU-informative, and this is NOT operational readiness."
         ),
     )
     cols[2].metric(
-        "Trusted-record share",
-        f"{summary['evidence_coverage_pct']:.0f} %",
-        help=(
-            "Share of supplied facility records classified as Trusted under the "
-            "current evidence rules - not the share of facilities with an ICU."
-        ),
+        f"{CLASS_ICONS[CLASS_TRUSTED]} Trusted ICU evidence",
+        summary["trusted_icu_count"],
+        help="Records meeting the Trusted ICU evidence standard under the current rules.",
     )
+    cols[3].metric(
+        f"{CLASS_ICONS[CLASS_NEEDS_REVIEW]} Needs verification",
+        summary["needs_review_count"],
+        help="Records with unresolved ICU claims - the human-review worklist.",
+    )
+
+
+def technical_metrics_expander(summary: dict) -> None:
+    with st.expander("How this regional assessment was calculated"):
+        cols = st.columns(2)
+        cols[0].metric(
+            "Trust-weighted ICU evidence index",
+            f"{summary['trust_weighted_icu_coverage']:.2f}",
+            help=(
+                "0-1 average capability-evidence score weighted by record "
+                "completeness. This is not population or geographic coverage."
+            ),
+        )
+        cols[1].metric(
+            "Trusted-record share",
+            f"{summary['evidence_coverage_pct']:.0f} %",
+            help=(
+                "Share of supplied facility records classified as Trusted under the "
+                "current evidence rules - not the share of facilities with an ICU."
+            ),
+        )
+        st.markdown(f"**Stored regional reasoning:** {summary['region_status_reason']}")
+        st.caption(
+            f"Thresholds and the complete Trusted rule are documented under "
+            f"“{EVIDENCE_POLICY_TITLE}” in the sidebar. {EVIDENCE_POLICY_CAPTION}"
+        )
+
+
+def regions_requiring_attention(region_district: pd.DataFrame, state: str) -> None:
+    """Districts grouped by EXISTING regional status - no new ranking."""
+    df = region_district
+    if state != "All India":
+        df = region_district[region_district["state"] == state]
+    st.markdown("**Regions requiring attention** (grouped by existing regional status)")
+    groups = [
+        ("🔴", "Potential planning gap", REGION_PLANNING_GAP),
+        ("🟡", "Needs facility verification", REGION_NEEDS_REVIEW),
+        ("⚪", "Insufficient data", REGION_DATA_DESERT),
+    ]
+    cols = st.columns(3)
+    for col, (icon, label, status) in zip(cols, groups, strict=True):
+        rows = df[df["region_status"] == status].sort_values("facility_count", ascending=False)
+        with col, st.container(border=True):
+            st.markdown(f"{icon} **{label}** — {len(rows)} district(s)")
+            for _, r in rows.head(5).iterrows():
+                st.caption(f"{r['state']} / {r['district']} ({int(r['facility_count'])} records)")
+            if len(rows) > 5:
+                st.caption(f"… and {len(rows) - 5} more")
+
+
+def priority_facilities_section(subset: pd.DataFrame, region_status: str) -> None:
+    """Up to five facilities the planner should open first."""
+    priority = select_priority_facilities(subset, region_status)
+    if priority.empty:
+        st.caption("No facilities require prioritized attention in this selection.")
+        return
+    st.markdown("**Facilities requiring attention**")
+    for _, row in priority.iterrows():
+        with st.container(border=True):
+            info, action = st.columns([5, 1])
+            with info:
+                flag = primary_flag(row)
+                place = " · ".join(
+                    str(v)
+                    for v in (row.get("address_city"), row.get("district_final"))
+                    if pd.notna(v) and str(v).strip()
+                )
+                st.markdown(
+                    f"**{row['name']}** &nbsp; {CLASS_ICONS[row['classification']]} "
+                    f"{facility_display_label(row['classification'])}  \n"
+                    f"{place or '-'} · evidence {row['capability_evidence_score']} · "
+                    f"judgeability {row['data_completeness_score']}"
+                    + (f" · {int(row['n_validation_flags'])} flag(s)" if row["n_validation_flags"] else "")
+                )
+                st.caption(row["priority_reason"] + (f" — {flag}" if flag else ""))
+            with action:
+                if st.button("Review evidence", key=f"review_{row['unique_id']}"):
+                    st.session_state["focus_facility"] = row["unique_id"]
+                    st.rerun()
 
 
 def scenarios_panel(
@@ -275,32 +467,36 @@ def scenarios_panel(
     scored: pd.DataFrame,
     config,
 ) -> None:
-    """Save the current planning view; list/reopen/delete saved scenarios."""
+    """Step 4: save the current planning view; list/reopen/delete scenarios."""
     store = scenario_store()
-    st.subheader("📋 Planning scenarios")
     st.caption(
-        "A scenario stores your current selection and its aggregate evidence metrics "
-        "(a snapshot of supplied-record evidence - not a verified coverage assessment). "
-        "Scenarios persist across page refreshes and app restarts."
+        "Save the selected region, current evidence status, metrics and planner notes "
+        "so the decision can be reopened and reviewed later. Scenarios persist across "
+        "page refreshes and app restarts (a snapshot of supplied-record evidence - "
+        "not a verified coverage assessment)."
     )
     snapshot = data_snapshot_id(scored)
     attachable = len(subset) <= 50
 
-    with st.expander("💾 Save planning scenario"), st.form(key="scenario_form", clear_on_submit=True):
+    with st.container(border=True), st.form(key="scenario_form", clear_on_submit=True):
+        st.markdown("**💾 Save this planning scenario**")
         name = st.text_input("Scenario name", max_chars=120)
-        author = st.text_input("Author (optional)", max_chars=80, key="scenario_author")
+        cols = st.columns(2)
+        with cols[0]:
+            author = st.text_input("Author (optional)", max_chars=80, key="scenario_author")
+        with cols[1]:
+            include_ids = st.checkbox(
+                f"Attach the {len(subset)} facility ID(s) in this selection"
+                if attachable
+                else f"Attach facility IDs (disabled: {len(subset)} records in selection, max 50)",
+                value=False,
+                disabled=not attachable,
+            )
         note = st.text_area(
             "Planner note (optional)",
             placeholder="e.g. Verify the two flagged facilities before budgeting.",
         )
-        include_ids = st.checkbox(
-            f"Attach the {len(subset)} facility ID(s) in this selection"
-            if attachable
-            else f"Attach facility IDs (disabled: {len(subset)} records in selection, max 50)",
-            value=False,
-            disabled=not attachable,
-        )
-        if st.form_submit_button("Save scenario"):
+        if st.form_submit_button("Save scenario", type="primary"):
             if not name.strip():
                 st.error("Give the scenario a name.")
             else:
@@ -399,73 +595,65 @@ def notes_panel(scope_type: str, scope_id: str, context: str) -> None:
     st.caption(context)
 
 
+# Display order for evidence fragments: contradictions first (they block
+# trust), then the claim itself, then its corroboration.
+_FRAGMENT_GROUP_ORDER = [
+    "negation",
+    "explicit_icu",
+    "equipment",
+    "procedure",
+    "staffing",
+    "specialty_context",
+]
+
+
+def _fragment_sort_key(fragment: dict) -> tuple[int, str]:
+    group = fragment.get("group", "")
+    try:
+        return (_FRAGMENT_GROUP_ORDER.index(group), group)
+    except ValueError:
+        return (len(_FRAGMENT_GROUP_ORDER), group)
+
+
 def facility_detail(row: pd.Series) -> None:
-    """Supplied record, exact evidence fragments, scores and flags."""
-    st.subheader(row["name"] if pd.notna(row["name"]) else "(unnamed facility)")
+    """Planner-first drilldown: decision summary -> exact evidence ->
+    missing/uncertain -> reviewer note -> collapsed technical details.
+    Nothing is removed; only the default hierarchy changed (D24)."""
+    classification = row["classification"]
     reason = row["classification_reason"]
-    if row["classification"] == CLASS_LIKELY_GAP:
+    if classification == CLASS_LIKELY_GAP:
         # Display-level wording: processed data built before D19 stores the
-        # old "likely a real capability gap" sentence, which overstates what
-        # a facility record proves.
+        # old "likely a real capability gap" sentence.
         reason = (
             f"This judgeable record (completeness {row['data_completeness_score']}) contains "
             "no credible ICU evidence. The regional layer decides whether that pattern "
             "becomes a potential planning gap."
         )
-    status_banner(row["classification"], reason)
-
     subtypes = json.loads(row.get("icu_subtypes_json") or "[]")
-    if subtypes:
-        pretty = [SUBTYPE_LABELS.get(s, s) for s in subtypes]
-        if SUBTYPE_GENERAL not in subtypes:
-            st.warning(
-                f"⚕️ **ICU evidence type: {', '.join(pretty)} only.** Specialised "
-                "intensive-care evidence does not automatically establish general "
-                "adult ICU capability."
-            )
-        else:
-            st.markdown(f"⚕️ **ICU evidence type:** {', '.join(pretty)}")
+    pretty_subtypes = [SUBTYPE_LABELS.get(s, s) for s in subtypes]
+    specialised_only = bool(subtypes) and SUBTYPE_GENERAL not in subtypes
+    operational = assess_operational_data(row)
+    status = assessment_status(classification)
+    fragments = sorted(json.loads(row["evidence_fragments_json"]), key=_fragment_sort_key)
+    all_flags = json.loads(row["validation_flags_json"])
+    unresolved_flags = [f for f in all_flags if f["severity"] in ("contradiction", "suspicious")]
 
-    left, right = st.columns([1, 1])
-
-    with left:
-        st.markdown("#### Supplied record")
-        st.caption(
-            "Fields below are structured claims generated upstream from website text "
-            "and images by the dataset's extraction pipeline - not verified hospital "
-            "statements."
-        )
-        place = ", ".join(
-            str(v)
-            for v in [row.get("address_line1"), row.get("address_city"), row.get("state_final")]
-            if pd.notna(v) and str(v).strip()
-        )
-        st.markdown(f"**Address:** {place or '-'}  \n**PIN:** {row.get('pincode_clean') or '-'}")
-        st.markdown(
-            f"**Geography source:** `{row.get('geo_source')}`"
-            + (" ⚠️ state field disagrees with PIN directory" if row.get("geo_conflict") else "")
-        )
-        st.markdown(f"**District (from PIN):** {row.get('district_final') or '-'}")
-        st.markdown(
-            f"**Capacity:** {row.get('capacity') or '-'} | **Doctors:** {row.get('numberDoctors') or '-'}"
-        )
-        if pd.notna(row.get("description")):
-            st.markdown(f"**Description:** {row['description']}")
-        for field in ("capability", "specialties", "procedure", "equipment"):
-            items = parse_list_field(row.get(field))
-            if items:
-                with st.expander(f"{field} ({len(items)} entries)"):
-                    for item in items:
-                        st.markdown(f"- {item}")
-        urls = parse_list_field(row.get("source_urls"))
-        if urls:
-            with st.expander(f"source URLs ({len(urls)})"):
-                for u in dict.fromkeys(urls):
-                    st.markdown(f"- {u}")
-
-    with right:
-        st.markdown("#### Trust assessment")
-        c1, c2 = st.columns(2)
+    # ---------------- A. Decision summary ----------------
+    with st.container(border=True):
+        st.subheader(row["name"] if pd.notna(row["name"]) else "(unnamed facility)", anchor=False)
+        st.markdown(status_chip(classification), unsafe_allow_html=True)
+        st.markdown(f"{status.icon} **{status.headline}**", help=status.help_text)
+        st.markdown(f"**Reason:** {reason}")
+        if subtypes:
+            if specialised_only:
+                st.warning(
+                    f"⚕️ **ICU evidence type: {', '.join(pretty_subtypes)} only.** Specialised "
+                    "intensive-care evidence does not automatically establish general "
+                    "adult ICU capability."
+                )
+            else:
+                st.markdown(f"⚕️ **ICU evidence type:** {', '.join(pretty_subtypes)}")
+        c1, c2, c3 = st.columns(3)
         c1.metric(
             "ICU evidence strength",
             f"{row['capability_evidence_score']} / 100",
@@ -477,42 +665,95 @@ def facility_detail(row: pd.Series) -> None:
             help=(
                 "Whether the record's fields are populated enough to evaluate what it "
                 "claims. Not 'fully documented', not ICU-informative content, not "
-                "operational data availability - see the checklist below."
+                "operational data availability."
             ),
         )
-
-        data = assess_operational_data(row)
-        st.markdown(
-            f"**Operational data availability: {data.summary}**",
+        c3.metric(
+            "Operational data",
+            f"{operational.available} of {operational.total}",
+            operational.level,
+            delta_color="off",
             help=OPERATIONAL_HELP,
         )
-        for key, present in data.components.items():
-            st.markdown(f"{'✅' if present else '⬜'} {OPERATIONAL_COMPONENTS[key]}")
-        if data.source_warning:
-            st.warning(f"⚠️ {data.source_warning}")
-        with st.expander("Operational field details"):
-            for key, label in OPERATIONAL_COMPONENTS.items():
-                st.markdown(f"**{label}** — {data.details.get(key, '-')}")
+        st.markdown(f"**Recommended reviewer action:** {reviewer_action(classification)}")
+
+    # ---------------- B. Exact evidence ----------------
+    st.markdown("##### Exact evidence (verbatim from the supplied record)")
+    if fragments:
+        for fragment in fragments[:5]:
+            icon = "🔴" if fragment["group"] == "negation" else "🔎"
+            st.markdown(f"{icon} *{fragment['group']}* — from `{fragment['field']}`:")
+            st.code(fragment["text"], language=None)
+        if len(fragments) > 5:
+            with st.expander(f"View all evidence fragments ({len(fragments)})"):
+                for fragment in fragments[5:]:
+                    icon = "🔴" if fragment["group"] == "negation" else "🔎"
+                    st.markdown(f"{icon} *{fragment['group']}* — from `{fragment['field']}`:")
+                    st.code(fragment["text"], language=None)
+    else:
         st.caption(
-            "ICU evidence strength, record judgeability and operational data "
-            "availability are separate questions; this checklist is descriptive "
-            "only and never changes the classification."
+            "No ICU-related text found in this record. This means the record shows no "
+            "evidence - not that the facility has been verified to lack an ICU."
         )
 
-        status = assessment_status(row["classification"])
-        st.markdown("##### Automated evidence assessment")
-        st.markdown(f"{status.icon} **{status.headline}**")
-        st.caption(status.help_text)
-        if not status.resolved:
-            st.markdown(f"**Reason:** {row['classification_reason']}")
-            critical = [
-                f
-                for f in json.loads(row["validation_flags_json"])
-                if f["severity"] in ("contradiction", "suspicious")
-            ]
-            for f in critical:
-                st.markdown(f"- 🟡 `{f['name']}` — {f['detail']}")
+    # ---------------- C. Missing or uncertain ----------------
+    st.markdown("##### Missing or uncertain")
+    if specialised_only:
+        st.markdown(
+            "- ⚕️ General adult ICU evidence is **absent** — only specialised subtype "
+            "evidence is present."
+        )
+    for f in unresolved_flags:
+        icon = "🔴" if f["severity"] == "contradiction" else "🟡"
+        st.markdown(f"- {icon} `{f['name']}` — {f['detail']}")
+    if operational.source_warning:
+        st.markdown(f"- ⚠️ {operational.source_warning}")
+    missing = json.loads(row["missing_evidence_json"])
+    for m in missing:
+        st.markdown(f"- {m}")
+    unavailable = [
+        OPERATIONAL_COMPONENTS[key] for key, present in operational.components.items() if not present
+    ]
+    if unavailable:
+        st.markdown(f"- Operational fields not stated: {', '.join(unavailable)}")
+    if not (specialised_only or unresolved_flags or missing or unavailable):
+        st.caption("Nothing missing or uncertain for this record.")
 
+    # ---------------- D. Reviewer action ----------------
+    notes_panel(
+        "facility",
+        row["unique_id"],
+        "Notes persist in the configured review store (SQLite locally, "
+        "Delta table on Databricks) and survive page refreshes.",
+    )
+
+    # ---------------- E. Technical details (collapsed) ----------------
+    with st.expander("View full supplied record"):
+        st.caption(
+            "Fields below are structured claims generated upstream from website text "
+            "and images by the dataset's extraction pipeline - not verified hospital "
+            "statements."
+        )
+        place = ", ".join(
+            str(v)
+            for v in [row.get("address_line1"), row.get("address_city"), row.get("state_final")]
+            if pd.notna(v) and str(v).strip()
+        )
+        st.markdown(f"**Address:** {place or '-'}  \n**PIN:** {row.get('pincode_clean') or '-'}")
+        st.markdown(f"**District (from PIN):** {row.get('district_final') or '-'}")
+        st.markdown(
+            f"**Capacity:** {row.get('capacity') or '-'} | **Doctors:** {row.get('numberDoctors') or '-'}"
+        )
+        if pd.notna(row.get("description")):
+            st.markdown(f"**Description:** {row['description']}")
+        for field in ("capability", "specialties", "procedure", "equipment"):
+            items = parse_list_field(row.get(field))
+            if items:
+                st.markdown(f"**{field} ({len(items)} entries):**")
+                for item in items:
+                    st.markdown(f"- {item}")
+
+    with st.expander("View scoring and validator details"):
         corroboration = json.loads(row.get("corroboration_categories_json") or "[]")
         min_corr = load_scoring_config().thresholds.min_corroboration_categories
         st.markdown(
@@ -520,7 +761,6 @@ def facility_detail(row: pd.Series) -> None:
             f"{', '.join(corroboration) if corroboration else 'none'} "
             f"({len(corroboration)} of {min_corr} required for Trusted)"
         )
-
         ev_comp = json.loads(row["evidence_components_json"])
         comp_comp = json.loads(row["completeness_components_json"])
         st.markdown("**Score breakdown**")
@@ -532,50 +772,82 @@ def facility_detail(row: pd.Series) -> None:
             st.dataframe(breakdown, hide_index=True, width="stretch")
         else:
             st.caption("No score components - nothing in this record carries signal.")
-
-        flags = json.loads(row["validation_flags_json"])
-        st.markdown("**Validator flags**")
-        if flags:
+        st.markdown("**All validator flags**")
+        if all_flags:
             sev_icon = {"contradiction": "🔴", "suspicious": "🟡", "data_quality": "⚪"}
-            for f in flags:
+            for f in all_flags:
                 st.markdown(f"{sev_icon.get(f['severity'], '⚪')} `{f['name']}` - {f['detail']}")
         else:
             st.caption("No validator flags.")
-
-        missing = json.loads(row["missing_evidence_json"])
-        st.markdown("**Missing evidence**")
-        if missing:
-            for m in missing:
-                st.markdown(f"- {m}")
-        else:
-            st.caption("Nothing missing.")
-
-    st.markdown("#### Evidence fragments (exact text from the supplied record)")
-    fragments = json.loads(row["evidence_fragments_json"])
-    if fragments:
-        by_group: dict[str, list[dict]] = {}
-        for f in fragments:
-            by_group.setdefault(f["group"], []).append(f)
-        for group, frags in by_group.items():
-            icon = "🔴" if group == "negation" else "🔎"
-            with st.expander(f"{icon} {group} ({len(frags)} fragment(s))", expanded=group == "negation"):
-                for f in frags:
-                    st.markdown(f"*from `{f['field']}`:*")
-                    st.code(f["text"], language=None)
-    else:
+        st.markdown(f"**Operational data availability: {operational.summary}**")
+        for key, present in operational.components.items():
+            st.markdown(f"{'✅' if present else '⬜'} {OPERATIONAL_COMPONENTS[key]}")
+        st.markdown("**Operational field details**")
+        for key, label in OPERATIONAL_COMPONENTS.items():
+            st.markdown(f"- **{label}** — {operational.details.get(key, '-')}")
         st.caption(
-            "No ICU-related text found in this record. This means the record shows no "
-            "evidence - not that the facility has been verified to lack an ICU."
+            "ICU evidence strength, record judgeability and operational data "
+            "availability are separate questions; the checklist is descriptive "
+            "only and never changes the classification."
         )
+
+    with st.expander("View source and provenance details"):
+        st.markdown(
+            f"**Geography source:** `{row.get('geo_source')}`"
+            + (" ⚠️ state field disagrees with PIN directory" if row.get("geo_conflict") else "")
+        )
+        urls = parse_list_field(row.get("source_urls"))
+        if urls:
+            st.markdown(f"**Source URLs ({len(urls)}):**")
+            for u in dict.fromkeys(urls):
+                st.markdown(f"- {u}")
+        else:
+            st.caption("No source URLs in the supplied record.")
+
+
+def sidebar_secondary(config) -> None:
+    """Secondary information only - the workflow lives on the main page."""
+    with st.sidebar:
+        st.markdown("### About this assessment")
+        with st.expander(EVIDENCE_POLICY_TITLE):
+            for line in evidence_policy_lines(config):
+                st.markdown(line)
+            st.caption(EVIDENCE_POLICY_CAPTION)
+        with st.expander("Methodology"):
+            st.markdown(
+                "Every classification is traceable to exact text fragments from the "
+                "supplied facility record. Two independent scores (ICU evidence "
+                "strength, record judgeability) plus deterministic validators feed a "
+                "four-state classification; regions separate potential planning gaps "
+                "from data deserts. See README.md and DECISIONS.md in the repository."
+            )
+        with st.expander("Dataset limitations"):
+            st.markdown(
+                "The supplied fields are structured claims generated upstream from "
+                "website text and images - not verified clinical facts. CareGap Map "
+                "assesses evidence in supplied facility records. It does not verify "
+                "current ICU operation, bed availability, staffing availability or "
+                "clinical service access."
+            )
+            st.caption(REGION_DISCLAIMER)
+        with st.expander("Technical details"):
+            st.markdown(
+                f"- Scoring-config fingerprint: `{scoring_config_fingerprint(config)}`\n"
+                "- Data source: precomputed deterministic snapshot (no live model calls)\n"
+                "- State/district selection persists in the URL query parameters"
+            )
 
 
 def main() -> None:
-    st.title("🏥 CareGap Map - ICU evidence trust layer")
-    st.caption(
-        "Distinguishes records without ICU evidence from data deserts. All signals reflect "
-        "**dataset consistency, not verified clinical capability** - 'no reliable ICU evidence' "
-        "is never treated as 'no ICU exists'."
+    st.markdown(_CSS, unsafe_allow_html=True)
+    st.markdown(
+        '<div class="cg-title">🏥 CareGap Map</div>'
+        '<div class="cg-subtitle">ICU evidence for public-health planning — separate '
+        "potential ICU planning gaps from places where the data is simply insufficient."
+        "</div>",
+        unsafe_allow_html=True,
     )
+    workflow_strip()
 
     try:
         scored, region_state, region_district = load_data()
@@ -588,8 +860,9 @@ def main() -> None:
         return
 
     config = load_scoring_config()
+    sidebar_secondary(config)
 
-    # ---------------- Sidebar: capability + region selection ----------------
+    # ---------------- 1 · Select region (top control bar) ----------------
     # A reopened scenario sets the selection before the widgets instantiate;
     # otherwise a fresh session (e.g. after a page refresh) restores the
     # region from the URL query parameters. Unknown values fall back to
@@ -599,7 +872,9 @@ def main() -> None:
         pending = normalize_region_request(
             st.query_params.get("state"), st.query_params.get("district")
         )
-    with st.sidebar:
+
+    ctrl = st.columns([1.1, 1, 1])
+    with ctrl[0]:
         st.selectbox(
             "Capability",
             ["ICU — prototype scope"],
@@ -613,14 +888,16 @@ def main() -> None:
                 "keyword rules across multiple clinical capabilities."
             ),
         )
-        states = sorted(s for s in scored["state_final"].dropna().unique())
-        state_options = ["All India"] + states + [UNASSIGNED]
-        if pending is not None:
-            target_state = pending.get("state") or "All India"
-            if target_state in state_options:
-                st.session_state["state_select"] = target_state
+    states = sorted(s for s in scored["state_final"].dropna().unique())
+    state_options = ["All India"] + states + [UNASSIGNED]
+    if pending is not None:
+        target_state = pending.get("state") or "All India"
+        if target_state in state_options:
+            st.session_state["state_select"] = target_state
+    with ctrl[1]:
         state = st.selectbox("State", state_options, key="state_select")
-        district = None
+    district = None
+    with ctrl[2]:
         if state not in ("All India", UNASSIGNED):
             districts = sorted(
                 d
@@ -636,17 +913,14 @@ def main() -> None:
             district = st.selectbox("District (optional)", district_options, key="district_select")
             if district == "All districts":
                 district = None
-        st.divider()
-        with st.expander("Active thresholds"):
-            t = config.thresholds
-            st.markdown(
-                f"- judgeable if completeness ≥ **{t.sufficient_completeness}**\n"
-                f"- trusted if evidence ≥ **{t.high_evidence}**\n"
-                f"- 'no ICU evidence' if evidence ≤ **{t.low_evidence}**\n"
-                f"- region data desert below **{t.region_min_data_pct:.0f}%** judgeable "
-                f"or **{t.region_min_facilities}** records"
+        else:
+            st.selectbox(
+                "District (optional)",
+                ["All districts"],
+                disabled=True,
+                key="district_placeholder",
+                help="Pick a state first to narrow down to a district.",
             )
-            st.caption("Configurable via CAREGAP_SCORING_CONFIG - see DECISIONS.md.")
 
     # Reflect the selection in the URL so a page refresh keeps the region.
     # Only public region names are stored - never notes or identifiers.
@@ -656,6 +930,22 @@ def main() -> None:
             del st.query_params[key]
         elif desired_params.get(key) and st.query_params.get(key) != desired_params[key]:
             st.query_params[key] = desired_params[key]
+
+    # Optional deterministic demo shortcuts (from the CURRENT data only).
+    examples = example_regions(region_district)
+    if examples:
+        with st.expander("✨ Explore an example"):
+            cols = st.columns(len(examples))
+            for col, (label, (ex_state, ex_district)) in zip(
+                cols, examples.items(), strict=True
+            ):
+                with col:
+                    if st.button(f"{label}: {ex_state} / {ex_district}", key=f"example_{label}"):
+                        st.session_state["pending_scenario"] = {
+                            "state": ex_state,
+                            "district": ex_district,
+                        }
+                        st.rerun()
 
     # ---------------- Filter the facility set ----------------
     subset = scored
@@ -672,89 +962,87 @@ def main() -> None:
     if district:
         region_label = f"{state} / {district}"
 
-    # ---------------- Regional summary ----------------
-    st.header(f"Regional evidence - {region_label}")
+    # ---------------- 2 · Understand the evidence ----------------
     summary = summarize_facilities(subset, config)
-    status_banner(summary["region_status"], summary["region_status_reason"])
-    st.caption(f"⚠️ {REGION_DISCLAIMER}")
-    if state == "All India" or not district:
-        st.caption("State-level numbers are high-level summaries — select a district for the planning view.")
+    hero_card(region_label, summary)
+    decision_path_row(summary, config)
     metrics_row(summary)
-
-    if summary["region_status"] == REGION_DATA_DESERT and summary["facility_count"] > 0:
+    distribution_bar(subset)
+    technical_metrics_expander(summary)
+    if state == "All India" or not district:
         st.caption(
-            "⚠️ This region is a **data desert**: the records are too thin to judge. "
-            "Treat it as *unknown*, never as an established ICU gap."
+            "State-level numbers are high-level summaries — select a district for the "
+            "planning view."
         )
 
-    # ---------------- Planning scenarios ----------------
-    try:
-        scenarios_panel(state, district, summary, subset, scored, config)
-    except Exception as exc:  # scenario persistence must never block the demo
-        st.warning(f"Planning scenarios are unavailable right now ({exc}). Notes still work.")
-
-    # ---------------- Regional chart ----------------
-    if state == "All India":
-        classification_chart(
-            scored.assign(region=scored["state_final"].fillna(UNASSIGNED)),
-            "region",
-            "Facility classifications by state",
-        )
-    elif not district and len(subset):
-        classification_chart(
-            subset.assign(region=subset["district_final"].fillna(UNASSIGNED)),
-            "region",
-            f"Facility classifications by district - {state}",
-        )
-
-    # ---------------- Facility map (optional; table stays primary) ----------
+    # Context-aware regional visualization.
     map_selected_id: str | None = None
-    with st.expander("🗺️ Facility evidence map (beta)", expanded=False):
+    if district:
+        st.markdown("**Facility evidence map**")
         map_selected_id = facility_map(subset)
+    else:
+        regions_requiring_attention(region_district, state)
+        if state == "All India":
+            classification_chart(
+                scored.assign(region=scored["state_final"].fillna(UNASSIGNED)),
+                "region",
+                "Facility evidence status by state",
+            )
+        elif len(subset):
+            classification_chart(
+                subset.assign(region=subset["district_final"].fillna(UNASSIGNED)),
+                "region",
+                f"Facility evidence status by district - {state}",
+            )
+        with st.expander("🗺️ Facility evidence map"):
+            map_selected_id = facility_map(subset)
 
-    # ---------------- Facility table ----------------
-    st.header("Facilities behind this result")
-    class_filter = st.multiselect(
-        "Filter by evidence status",
-        CLASS_STACK_ORDER,
-        default=CLASS_STACK_ORDER,
-        format_func=lambda c: f"{CLASS_ICONS[c]} {facility_display_label(c)}",
-    )
-    table = subset[subset["classification"].isin(class_filter)].sort_values(
+    # ---------------- 3 · Review priority facilities ----------------
+    st.header("3 · Review priority facilities", anchor=False)
+    priority_facilities_section(subset, summary["region_status"])
+
+    table = subset.sort_values(
         ["capability_evidence_score", "data_completeness_score"], ascending=False
     )
-    st.dataframe(
-        table[
-            [
-                "name",
-                "address_city",
-                "district_final",
-                "state_final",
-                "classification",
-                "capability_evidence_score",
-                "data_completeness_score",
-                "n_validation_flags",
+    with st.expander(f"View all {len(subset)} facility records"):
+        class_filter = st.multiselect(
+            "Filter by evidence status",
+            CLASS_STACK_ORDER,
+            default=CLASS_STACK_ORDER,
+            format_func=lambda c: f"{CLASS_ICONS[c]} {facility_display_label(c)}",
+        )
+        filtered = table[table["classification"].isin(class_filter)]
+        st.dataframe(
+            filtered[
+                [
+                    "name",
+                    "address_city",
+                    "district_final",
+                    "state_final",
+                    "classification",
+                    "capability_evidence_score",
+                    "data_completeness_score",
+                    "n_validation_flags",
+                ]
             ]
-        ]
-        .assign(classification=table["classification"].map(facility_display_label))
-        .rename(
-            columns={
-                "address_city": "city",
-                "district_final": "district",
-                "state_final": "state",
-                "classification": "evidence status",
-                "capability_evidence_score": "evidence 0-100",
-                "data_completeness_score": "completeness 0-100",
-                "n_validation_flags": "flags",
-            }
-        ),
-        hide_index=True,
-        width="stretch",
-        height=320,
-    )
+            .assign(classification=filtered["classification"].map(facility_display_label))
+            .rename(
+                columns={
+                    "address_city": "city",
+                    "district_final": "district",
+                    "state_final": "state",
+                    "classification": "evidence status",
+                    "capability_evidence_score": "evidence 0-100",
+                    "data_completeness_score": "completeness 0-100",
+                    "n_validation_flags": "flags",
+                }
+            ),
+            hide_index=True,
+            width="stretch",
+            height=320,
+        )
 
-    # ---------------- Facility drilldown ----------------
-    st.header("Facility drilldown")
+    # ---------------- Facility evidence review (drilldown) ----------------
     if table.empty:
         st.info("No facilities match the current selection.")
     else:
@@ -762,29 +1050,37 @@ def main() -> None:
             f"{r['name']} - {r.get('address_city') or '?'} ({r['unique_id'][:8]})": idx
             for idx, r in table.iterrows()
         }
-        default_index = 0
-        if map_selected_id is not None:
-            ids = table["unique_id"].tolist()
-            if map_selected_id in ids:
-                default_index = ids.index(map_selected_id)
-        choice = st.selectbox("Inspect a facility", list(options.keys()), index=default_index)
-        row = table.loc[options[choice]]
-        facility_detail(row)
-        st.divider()
-        notes_panel(
-            "facility",
-            row["unique_id"],
-            "Notes persist in the configured review store (SQLite locally, "
-            "Delta table on Databricks) and survive page refreshes.",
-        )
+        option_labels = list(options.keys())
+        ids = table["unique_id"].tolist()
+        # A "Review evidence" click or a map click focuses the drilldown ONCE,
+        # then leaves the dropdown free for manual navigation.
+        focus_id = st.session_state.pop("focus_facility", None) or map_selected_id
+        if focus_id in ids and focus_id != st.session_state.get("last_focus_applied"):
+            st.session_state["facility_select"] = option_labels[ids.index(focus_id)]
+            st.session_state["last_focus_applied"] = focus_id
+        if st.session_state.get("facility_select") not in option_labels:
+            st.session_state.pop("facility_select", None)
+        choice = st.selectbox("Inspect a facility", option_labels, key="facility_select")
+        facility_detail(table.loc[options[choice]])
 
     # ---------------- Region-level notes ----------------
     if state != "All India":
-        st.divider()
-        if district and district != UNASSIGNED:
-            notes_panel("district", f"{state}/{district}", "Attached to the selected district.")
-        elif state != UNASSIGNED:
-            notes_panel("state", state, "Attached to the selected state.")
+        scope_exists = (district and district != UNASSIGNED) or state != UNASSIGNED
+        if scope_exists:
+            with st.expander("🗒️ Region reviewer notes"):
+                if district and district != UNASSIGNED:
+                    notes_panel(
+                        "district", f"{state}/{district}", "Attached to the selected district."
+                    )
+                else:
+                    notes_panel("state", state, "Attached to the selected state.")
+
+    # ---------------- 4 · Save a planning scenario ----------------
+    st.header("4 · Save a planning scenario", anchor=False)
+    try:
+        scenarios_panel(state, district, summary, subset, scored, config)
+    except Exception as exc:  # scenario persistence must never block the demo
+        st.warning(f"Planning scenarios are unavailable right now ({exc}). Notes still work.")
 
 
 main()

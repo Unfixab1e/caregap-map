@@ -268,9 +268,15 @@ class TestWordingSafety:
     ]
 
     def test_app_ui_source_contains_no_unsafe_wording(self):
-        source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8").lower()
-        for phrase in self.BANNED:
-            assert phrase not in source, f"unsafe phrase {phrase!r} in app.py"
+        root = Path(__file__).resolve().parents[1]
+        for rel in (
+            "app.py",
+            "src/caregap_map/regional_guidance.py",
+            "src/caregap_map/ui_components.py",
+        ):
+            source = (root / rel).read_text(encoding="utf-8").lower()
+            for phrase in self.BANNED:
+                assert phrase not in source, f"unsafe phrase {phrase!r} in {rel}"
 
     def test_config_labels_contain_no_unsafe_wording(self):
         from caregap_map.config import FACILITY_DISPLAY_LABELS, REGION_DISCLAIMER, SUBTYPE_LABELS

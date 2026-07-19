@@ -23,16 +23,46 @@ def test_app_renders_all_india_without_exception():
     at = AppTest.from_file(str(APP), default_timeout=120)
     at.run()
     assert not at.exception, at.exception
-    # The four-state metrics row is on screen, with the precise display labels.
+    # Planner-first metric cards (D24) plus the technical metrics that moved
+    # into the "How this regional assessment was calculated" expander.
     labels = " ".join(m.label for m in at.metric)
-    for expected in ("Trusted ICU evidence", "No ICU evidence", "Insufficient data", "Needs review"):
+    for expected in (
+        "Facility records",
+        "Judgeable records",
+        "Trusted ICU evidence",
+        "Needs verification",
+        "Trust-weighted ICU evidence index",
+        "Trusted-record share",
+    ):
         assert expected in labels
     # Renamed headline metrics (D19): no "coverage" wording for record shares.
-    assert "Trust-weighted ICU evidence index" in labels
-    assert "Trusted-record share" in labels
     assert "Evidence coverage" not in labels
     assert "Trust-weighted ICU coverage" not in labels
     assert "Likely gap" not in labels
+
+
+@needs_data
+def test_full_facility_table_and_workflow_sections_present():
+    """D24: the full table stays available; the four-step workflow renders."""
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    assert not at.exception, at.exception
+    page_text = (
+        " ".join(m.value for m in at.markdown)
+        + " ".join(h.value for h in at.header)
+        + " ".join(e.label for e in at.expander)
+    )
+    assert "View all" in page_text and "facility records" in page_text
+    assert "Review priority facilities" in page_text
+    assert "Save a planning scenario" in page_text
+    assert "Why this status?" in page_text
+    assert "Recommended next action" in page_text
+    # Exact evidence and notes remain reachable in the drilldown.
+    assert "Exact evidence" in page_text
+    assert any(ta.label == "New note" for ta in at.text_area)
+    # No threshold controls exist in the planner UI (policy is read-only).
+    assert not at.slider
+    assert not at.number_input
 
 
 @needs_data
