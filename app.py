@@ -149,30 +149,59 @@ st.set_page_config(
 
 _CSS = """
 <style>
+/* ---- Material-leaning design tokens (D29): radius, elevation, spacing ---
+   Visual only: no information is conveyed by color alone, both Streamlit
+   themes stay supported, and no text content changes. */
 /* Streamlit's app header is a ~3.75rem sticky overlay: the content needs
    at least that much top padding or the title renders underneath it. */
-.block-container {padding-top: 4.25rem; padding-bottom: 3rem;}
+.block-container {padding-top: 4.25rem; padding-bottom: 3rem; max-width: 1240px;}
 .cg-title {font-size: 1.9rem; font-weight: 800; line-height: 1.15; margin: 0;}
 .cg-title a {color: inherit; text-decoration: none;}
 .cg-title a:hover {opacity: .8; text-decoration: none;}
-.cg-subtitle {font-size: 1.0rem; opacity: .78; margin: .1rem 0 .55rem 0;}
+.cg-subtitle {font-size: 1.0rem; opacity: .75; margin: .1rem 0 .6rem 0;}
 .cg-anchor {display: block; position: relative; visibility: hidden;
             scroll-margin-top: 4.5rem; height: 0;}
-.cg-wf {display: flex; flex-direction: column; gap: .45rem; margin-bottom: 1rem;}
+
+/* Cards: soft rounded elevation for every bordered container. */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.05);
+}
+div[data-testid="stExpander"] {border-radius: 12px; overflow: hidden;}
+div[data-testid="stExpander"] > details {border-radius: 12px;}
+
+/* Buttons: rounded, generous hit areas. */
+.stButton > button {border-radius: 10px;}
+.stButton > button[kind="tertiary"] {padding: .1rem .3rem; text-align: left;}
+
+/* Metrics: quieter labels, stronger values. */
+div[data-testid="stMetricLabel"] {opacity: .82;}
+div[data-testid="stMetricValue"] {font-size: 1.55rem; font-weight: 750;}
+
+/* Workflow sidebar cards. */
+.cg-wf {display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1.1rem;}
 .cg-wf-step {display: flex; gap: .55rem; align-items: flex-start;
-             border: 1px solid rgba(128,128,128,.35); border-radius: 10px;
-             padding: .45rem .6rem; text-decoration: none !important; color: inherit;}
-.cg-wf-step.current {border: 2px solid #1c83e1; background: rgba(28,131,225,.08);}
+             border: 1px solid rgba(128,128,128,.32); border-radius: 12px;
+             padding: .5rem .65rem; text-decoration: none !important; color: inherit;
+             transition: box-shadow .15s ease, border-color .15s ease;}
+.cg-wf-step:hover {box-shadow: 0 2px 8px rgba(0,0,0,.10); border-color: rgba(128,128,128,.55);}
+.cg-wf-step.current {border: 2px solid #1a73e8; background: rgba(26,115,232,.09);}
 .cg-wf-step.current .cg-wf-title {font-weight: 750;}
 .cg-wf-step.done {opacity: .72;}
 .cg-wf-mark {min-width: 1rem; font-weight: 700; line-height: 1.35;}
 .cg-wf-title {display: block; font-weight: 600; font-size: .92rem; color: inherit;}
 .cg-wf-desc {display: block; font-size: .8rem; opacity: .78; font-weight: 400;}
-.cg-chip {display: inline-block; border-radius: 999px; padding: .28rem .85rem;
-          font-weight: 750; font-size: 1.08rem; letter-spacing: .01em;}
-.cg-counts {font-size: .95rem; opacity: .92; margin-top: .35rem;}
+
+/* Status chips and hero counts. */
+.cg-chip {display: inline-block; border-radius: 999px; padding: .3rem .9rem;
+          font-weight: 750; font-size: 1.05rem; letter-spacing: .015em;
+          box-shadow: 0 1px 3px rgba(0,0,0,.18);}
+.cg-counts {font-size: .95rem; opacity: .92; margin-top: .4rem;}
+
 h1, h2, h3 {letter-spacing: -.01em;}
-div[data-testid="stMetricValue"] {font-size: 1.6rem;}
+h2 {font-size: 1.45rem;}
+h3 {font-size: 1.15rem;}
+hr {margin: .8rem 0;}
 </style>
 """
 

@@ -64,6 +64,14 @@ worth a human look:
   24-record stratified pilot (0 API errors).
 - Codex (gpt-5.6-luna) pilot vs OpenAI extractor: 87 %; vs
   deterministic: 74 % (24-record pilot).
+- Codex offline batch run (gpt-5.6-luna), stopped gracefully at a batch
+  checkpoint after covering **5,597 of 10,077 records (55.5%)**:
+  **89.1 %** extractor agreement with the deterministic v1 baseline and
+  **87.0 %** with the OpenAI extractor on the overlap; 2,669 fragments
+  verified verbatim, 114 unverifiable fragments dropped by the guardrail;
+  the 608 deterministic-vs-Codex disagreements were appended to the
+  private review sample as the human worklist. Diagnostic, not accuracy;
+  comparisons pin to the v1 snapshot recorded in the run manifest.
 - MLflow traced evaluation (34 records, **deliberately
   disagreement-heavy** — every stored disagreement is included by
   design): OpenAI 52.9 %, Codex 64.7 % extractor agreement. Lower than

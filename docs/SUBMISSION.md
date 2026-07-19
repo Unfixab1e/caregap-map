@@ -53,6 +53,9 @@ and planning logic built on top of it.**
 - [ ] MLflow: experiment `caregap-evaluation` → Traces tab → open one
       `facility_<id>` trace → show the 11 pipeline spans; run
       `final-candidate-eval` metrics + `evaluation_summary.json` artifact
+- [ ] Codex partial-run comparison: 5,597 records, 89.1 % / 87.0 % extractor
+      agreement (diagnostic), 114 hallucinated fragments dropped - MLflow run
+      `codex-partial-run-comparison`
 - [ ] Delta tables: `workspace.caregap.review_notes`,
       `workspace.caregap.planning_scenarios` (parameterized SQL only)
 - [ ] CI green without any credentials or challenge data

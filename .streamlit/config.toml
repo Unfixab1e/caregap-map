@@ -1,0 +1,7 @@
+# CareGap Map theme (D29): Material-leaning accent; works on light and
+# dark bases (the base stays user-selectable).
+[theme]
+primaryColor = "#1a73e8"
+
+[browser]
+gatherUsageStats = false
