@@ -15,8 +15,10 @@
 CareGap Map is a trust layer over 10,077 supplied facility records: a
 deterministic, fully traceable evidence pipeline classifies every record
 (Trusted ICU evidence / Needs Human Review / No ICU evidence in judgeable
-record / Insufficient Data), a regional layer separates **potential
-planning gaps** from **data deserts**, and a planner workflow (drilldown
+record / Insufficient Data) under versioned evidence rules (Policy v2: a
+bare ICU keyword is never trusted; a substantive description statement
+plus one operational signal can be), a regional layer separates
+**potential planning gaps** from **data deserts**, and a planner workflow (drilldown
 with exact fragments, operational-data checklist, durable notes and
 saved planning scenarios) runs as a Databricks App over Unity Catalog
 storage with Delta persistence and MLflow 3 evaluation.
@@ -36,7 +38,7 @@ and planning logic built on top of it.**
 
 ## Demo video checklist (90 s — see DEMO_SCRIPT.md)
 
-- [ ] Headline: 203 of 10,077 ≠ "only 203 ICUs"
+- [ ] Headline: 275 of 10,077 ≠ "only 275 ICUs" (Evidence Policy v2)
 - [ ] Data desert vs potential planning gap (two districts)
 - [ ] Drilldown: fragment, categories, subtype, validator flag, missing
       evidence, operational data availability
@@ -101,5 +103,5 @@ accuracy.
   clinical accuracy claim is made. Extractor-agreement numbers are
   diagnostic and come from small or deliberately disagreement-heavy
   samples.
-- 64 of 103 trusted-evidence districts hinge on a single record.
+- 77 of 132 trusted-evidence districts hinge on a single record.
 - NFHS is cleaned but not joined; choropleth geometry out of scope.

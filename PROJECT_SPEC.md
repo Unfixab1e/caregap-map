@@ -63,7 +63,7 @@ checklist never feeds classification.
 |---|---|
 | Self-contradictory record | Needs Human Review |
 | Completeness below judgeability threshold | Insufficient Data |
-| High evidence + explicit claim + ≥2 distinct evidence categories | Trusted ICU Coverage |
+| High evidence + explicit claim + (≥2 distinct evidence categories, or substantive description statement + 1 — policy v2) | Trusted ICU Coverage |
 | High evidence but suspicious claims, no explicit claim, or insufficient corroboration | Needs Human Review |
 | Low evidence, sufficient data | Likely Medical Gap |
 | Mid-band (ambiguous) evidence | Needs Human Review |

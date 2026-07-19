@@ -466,3 +466,47 @@ evidence score, judgeability) and an overlap caption. The planning-gap demo exam
 now deterministically prefers hospital-rich, well-located districts with a fallback to
 the previous most-records pick. The page title links back to the query-parameter-free
 All-India view so the national map is always one click away.
+
+## D28 - Evidence policy v2: substantive description corroboration
+
+Policy v1 (D14/D18) required an explicit claim plus TWO operational corroboration
+categories. The boundary audit (`scripts/audit_trust_boundary.py`) found 705 records
+sitting at Needs Human Review with evidence ≥ the trust threshold, an explicit claim,
+judgeable data, no contradiction and exactly ONE operational category - nearly every
+plausible hospital ICU claim was being routed to manual review, weakening the planner
+workflow.
+
+**Decision (v2, variant B - the narrowest audited rule):** the Trusted corroboration
+requirement is also satisfied by **substantive description corroboration plus one
+operational category** when ALL of the following hold: the exact verified fragment
+comes from the description field; it contains the explicit ICU claim; it is
+substantive (≥ 5 words AND a service verb, an ICU unit/department statement or a
+concrete operational detail - a semantic gate, never a character count); it does not
+match directory/partner patterns; the explicit claim is echoed in at least one
+structured field; the record is judgeable with no contradiction and no blocking
+suspicious flag (both gates fire earlier in the precedence); and at least one
+operational category (equipment / procedure / staffing / anchored bed count) exists
+under the existing independence rules - so one marketing phrase still cannot
+corroborate itself, and description corroboration ALONE never yields Trusted. Bare
+keywords ("ICU available", "ICU / NICU") and list-only claims remain insufficient.
+`min_corroboration_categories` stays 2; numeric thresholds are unchanged.
+
+Description corroboration is evidence within the supplied record, not independent
+external verification, and classifications remain evidence claims - never verified
+real-world ICU operation.
+
+**Audit + rebuild results (10,077 records):** boundary population 705; candidate v2A
+(no structured-field echo) would promote 80, v2B promotes **72** - chosen because the
+8 v2A-only records included directory-flavoured description-only text. All 72
+promotions are Needs Human Review → Trusted (66 hospital-like, 6 unknown by audit
+category; 0 blocking flags; 13 specialised-subtype records keep their subtype labels;
+minimum promoted evidence score 45). Class counts: Trusted 203 → 275, Review
+2,867 → 2,795, Gap 6,890 and Insufficient 117 unchanged. Districts: trusted-evidence
+103 → 132, needs-verification 256 → 227, potential planning gaps 32 and data deserts
+186 unchanged - the relaxation cannot manufacture gaps or deserts by construction.
+Satyarthi Hospital (substantive description ICU/NICU statement + ventilator evidence)
+promotes; Sudarshan Hospitals (capability-only claim) stays in review - both are
+regression tests. The scoring-config fingerprint and data-snapshot digest changed, so
+previously saved scenarios warn on reopen. Not claimed: that v2 is more accurate -
+there is no ground truth; the claim is that v2 reduces unnecessary human review while
+preserving explicit, source-verifiable, rule-based trust gates.

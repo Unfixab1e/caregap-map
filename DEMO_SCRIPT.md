@@ -25,9 +25,9 @@ situations."*
 ## The 90 seconds
 
 1. **(0:00–0:12) Headline.** All-India view.
-   > "Only **203 of 10,077** supplied records meet our strict Trusted ICU evidence
-   > standard. **That is not the same as saying only 203 facilities have an ICU** —
-   > 2,867 carry unverified claims waiting for human review, and our published audit
+   > "Only **275 of 10,077** supplied records meet our strict Trusted ICU evidence
+   > standard. **That is not the same as saying only 275 facilities have an ICU** —
+   > 2,795 carry unverified claims waiting for human review (Evidence Policy v2), and our published audit
    > shows a third of the red records are dental practices, labs and clinics that were
    > never going to have one."
 

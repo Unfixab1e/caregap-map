@@ -227,24 +227,25 @@ def test_prototype_scope_capability_control():
 
 
 @needs_data
-def test_facility_and_regional_counts_unchanged_by_operational_view():
-    """D23 is descriptive only: stored classifications and regional statuses
-    keep the exact pre-change distribution."""
+def test_facility_and_regional_counts_match_policy_v2_rebuild():
+    """D28 rebuild: exactly 72 Review->Trusted promotions and the regional
+    consequences - gap and insufficient counts untouched by construction."""
     import pandas as pd
 
     scored = pd.read_parquet(PROCESSED / "facilities_scored.parquet")
     counts = scored["classification"].value_counts()
-    assert counts["Trusted ICU Coverage"] == 203
-    assert counts["Needs Human Review"] == 2867
-    assert counts["Likely Medical Gap"] == 6890
-    assert counts["Insufficient Data"] == 117
+    assert counts["Trusted ICU Coverage"] == 275  # was 203 under policy v1
+    assert counts["Needs Human Review"] == 2795  # was 2,867
+    assert counts["Likely Medical Gap"] == 6890  # unchanged
+    assert counts["Insufficient Data"] == 117  # unchanged
+    assert scored["unique_id"].is_unique
 
     districts = pd.read_parquet(PROCESSED / "region_summary_district.parquet")
     status = districts["region_status"].value_counts()
-    assert status["Trusted ICU evidence found"] == 103
-    assert status["Needs facility verification"] == 256
-    assert status["Potential planning gap"] == 32
-    assert status["Insufficient data to assess"] == 186
+    assert status["Trusted ICU evidence found"] == 132  # was 103
+    assert status["Needs facility verification"] == 227  # was 256
+    assert status["Potential planning gap"] == 32  # unchanged
+    assert status["Insufficient data to assess"] == 186  # unchanged
 
 
 @needs_data

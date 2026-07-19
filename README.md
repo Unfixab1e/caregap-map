@@ -24,7 +24,7 @@ wording, D19):
 
 | | Displayed as | Stored constant | Meaning |
 |---|---|---|---|
-| 🟢 | Trusted ICU evidence | `Trusted ICU Coverage` | explicit claim + ≥2 distinct evidence categories in the record |
+| 🟢 | Trusted ICU evidence | `Trusted ICU Coverage` | explicit claim + ≥2 distinct evidence categories, or a substantive description statement + 1 (policy v2, D28) |
 | 🔴 | No ICU evidence in judgeable record | `Likely Medical Gap` | well-populated record, no credible ICU evidence found |
 | ⚪ | Insufficient Data | `Insufficient Data` | cannot be judged — *unknown*, not a gap |
 | 🟡 | Needs Human Review | `Needs Human Review` | contradictory, suspicious, ambiguous or uncorroborated |
@@ -46,10 +46,17 @@ flagged). See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the frozen scope and
 
 Current All-India values and what they do — and do not — mean:
 
-- **Trusted ICU evidence: 203 of 10,077 records.** Only 203 supplied records meet the
-  strict Trusted evidence standard. **That is not the same as saying only 203 facilities
-  have an ICU** — 2,867 records carry unverified or uncorroborated claims awaiting
-  review.
+- **Trusted ICU evidence: 275 of 10,077 records.** Only 275 supplied records meet the
+  strict Trusted evidence standard (Evidence Policy v2, D28). **That is not the same as
+  saying only 275 facilities have an ICU** — 2,795 records carry unverified or
+  uncorroborated claims awaiting review.
+
+  CareGap Map does more than count ICU keywords. A bare ICU claim remains untrusted.
+  Under Evidence Policy v2, a record can be Trusted when a substantive ICU statement
+  in the description is backed by at least one distinct operational signal such as
+  equipment, staffing, procedure evidence or an anchored ICU bed count. Description
+  corroboration is evidence within the supplied record, not independent external
+  verification.
 - **No ICU evidence in judgeable record: 6,890.** The audit
   (`scripts/audit_headline_metrics.py`) shows only ~36 % of these are even hospital-like
   by name; ~35 % are clearly non-hospital organizations (1,713 dental practices, 588
@@ -65,8 +72,8 @@ Current All-India values and what they do — and do not — mean:
   checklist (D20, D23).
 - **Trust-weighted ICU evidence index (0–1)** — average capability-evidence score
   weighted by record completeness. **Not** population or geographic coverage.
-- **Trusted-record share (2 %)** — share of supplied records classified Trusted under
-  the current rules. **Not** "2 % national ICU coverage".
+- **Trusted-record share (~3 %)** — share of supplied records classified Trusted under
+  the current rules. **Not** national ICU coverage of any kind.
 
 Reproduce the full audit behind these statements with
 `python scripts/audit_headline_metrics.py` (writes git-ignored
@@ -328,7 +335,7 @@ written to the Delta table before the restart was still present after it. See
   change is ground-truth-validated (which is why D21 clarifies wording instead of
   reclassifying); human-labelled calibration remains future work and no clinical
   accuracy claim is made.
-- 64 of 103 trusted-evidence districts hinge on a single trusted record; 88 districts
+- 77 of 132 trusted-evidence districts hinge on a single trusted record; 88 districts
   are dominated by non-hospital records.
 
 ## Privacy & licensing
