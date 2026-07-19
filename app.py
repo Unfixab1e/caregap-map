@@ -67,9 +67,16 @@ from caregap_map.scenarios import (  # noqa: E402
     scoring_config_fingerprint,
 )
 from caregap_map.ui_components import (  # noqa: E402
+    CONTEXT_CAPTION,
+    MAP_MARKER,
+    MIX_GAP_WARNING,
     district_centroids,
     example_regions,
+    facility_mix_counts,
+    facility_mix_sentence,
     hero_counts_html,
+    map_view,
+    mix_warning_applies,
     primary_flag,
     select_priority_facilities,
     status_distribution,
@@ -144,6 +151,8 @@ _CSS = """
    at least that much top padding or the title renders underneath it. */
 .block-container {padding-top: 4.25rem; padding-bottom: 3rem;}
 .cg-title {font-size: 1.9rem; font-weight: 800; line-height: 1.15; margin: 0;}
+.cg-title a {color: inherit; text-decoration: none;}
+.cg-title a:hover {opacity: .8; text-decoration: none;}
 .cg-subtitle {font-size: 1.0rem; opacity: .78; margin: .1rem 0 .55rem 0;}
 .cg-anchor {display: block; position: relative; visibility: hidden;
             scroll-margin-top: 4.5rem; height: 0;}
@@ -297,10 +306,17 @@ def facility_map(subset: pd.DataFrame) -> str | None:
     located["status"] = located["classification"].map(
         lambda c: f"{CLASS_ICONS.get(c, '')} {facility_display_label(c)}"
     )
+    located["city_disp"] = located["address_city"].fillna("-")
+    located["district_disp"] = located["district_final"].fillna("-")
     order = [f"{CLASS_ICONS[c]} {facility_display_label(c)}" for c in CLASS_STACK_ORDER]
     colors = {
         f"{CLASS_ICONS[c]} {facility_display_label(c)}": CLASS_COLORS[c] for c in CLASS_STACK_ORDER
     }
+    # Deterministic bounds-aware view: original coordinates are never
+    # modified or jittered; overlapping records simply overlap.
+    center_lat, center_lon, zoom = map_view(
+        located["lat_parsed"].tolist(), located["lon_parsed"].tolist()
+    )
     fig = px.scatter_map(
         located,
         lat="lat_parsed",
@@ -309,17 +325,26 @@ def facility_map(subset: pd.DataFrame) -> str | None:
         category_orders={"status": order},
         color_discrete_map=colors,
         hover_name="name",
-        hover_data={
-            "lat_parsed": False,
-            "lon_parsed": False,
-            "status": True,
-            "capability_evidence_score": True,
-            "data_completeness_score": True,
-        },
-        custom_data=["unique_id"],
-        zoom=7.0,
-        height=380,
+        custom_data=[
+            "unique_id",
+            "city_disp",
+            "district_disp",
+            "capability_evidence_score",
+            "data_completeness_score",
+        ],
+        zoom=zoom,
+        center={"lat": center_lat, "lon": center_lon},
+        height=420,
     )
+    hover = (
+        "<b>%{hovertext}</b><br>%{customdata[1]}, %{customdata[2]}<br>STATUS<br>"
+        "ICU evidence score: %{customdata[3]} / 100<br>"
+        "Record judgeability: %{customdata[4]} / 100<br>"
+        "<i>Click to open the evidence review</i><extra></extra>"
+    )
+    for trace in fig.data:
+        trace.hovertemplate = hover.replace("STATUS", str(trace.name))
+    fig.update_traces(marker=MAP_MARKER)
     fig.update_layout(
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.0},
         margin={"l": 0, "r": 0, "t": 10, "b": 0},
@@ -330,7 +355,8 @@ def facility_map(subset: pd.DataFrame) -> str | None:
     )
     st.caption(
         f"{len(located)} located facility records; **{unlocated} without valid coordinates "
-        "are NOT on this map** but appear in the table below. Points show record locations "
+        "are NOT on this map** but appear in the table below. Some records may share or "
+        "nearly share coordinates, so markers can overlap. Points show record locations "
         "and evidence status only - not travel time, population need or verified capability. "
         "Click a point to open its evidence review."
     )
@@ -530,8 +556,11 @@ def metrics_row(summary: dict) -> None:
     )
 
 
-def technical_metrics_expander(summary: dict) -> None:
+def technical_metrics_expander(summary: dict, mix_sentence: str | None = None) -> None:
     with st.expander("How this regional assessment was calculated"):
+        if mix_sentence:
+            st.markdown(f"**Facility mix (name-based context, display only):** {mix_sentence}")
+            st.caption(CONTEXT_CAPTION)
         cols = st.columns(2)
         cols[0].metric(
             "Trust-weighted ICU evidence index",
@@ -586,6 +615,7 @@ def priority_facilities_section(subset: pd.DataFrame, region_status: str) -> Non
         st.caption("No facilities require prioritized attention in this selection.")
         return
     st.markdown("**Facilities requiring attention**")
+    st.caption(CONTEXT_CAPTION)
     for _, row in priority.iterrows():
         with st.container(border=True):
             info, action = st.columns([5, 1])
@@ -603,7 +633,10 @@ def priority_facilities_section(subset: pd.DataFrame, region_status: str) -> Non
                     f"judgeability {row['data_completeness_score']}"
                     + (f" · {int(row['n_validation_flags'])} flag(s)" if row["n_validation_flags"] else "")
                 )
-                st.caption(row["priority_reason"] + (f" — {flag}" if flag else ""))
+                st.caption(
+                    f"{row['facility_context']} · {row['priority_reason']}"
+                    + (f" — {flag}" if flag else "")
+                )
             with action:
                 if st.button("Review evidence", key=f"review_{row['unique_id']}"):
                     st.session_state["focus_facility"] = row["unique_id"]
@@ -1010,8 +1043,13 @@ def sidebar_secondary(config) -> None:
 
 def main() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
+    # The title is a link back to the fresh All-India view: "./" drops the
+    # ?state=&district= parameters, so the national evidence landscape shows.
     st.markdown(
-        '<div class="cg-title">🏥 CareGap Map</div>'
+        '<div class="cg-title"><a href="./" target="_self" '
+        'title="Back to the India-wide evidence overview" '
+        'aria-label="CareGap Map — back to the India-wide overview">'
+        "🏥 CareGap Map</a></div>"
         '<div class="cg-subtitle">ICU evidence for public-health planning — separate '
         "potential ICU planning gaps from places where the data is simply insufficient."
         "</div>",
@@ -1101,7 +1139,7 @@ def main() -> None:
             st.query_params[key] = desired_params[key]
 
     # Optional deterministic demo shortcuts (from the CURRENT data only).
-    examples = example_regions(region_district)
+    examples = example_regions(region_district, scored)
     if examples:
         with st.expander("✨ Explore an example"):
             cols = st.columns(len(examples))
@@ -1168,10 +1206,19 @@ def main() -> None:
         )
     else:
         hero_card(region_label, summary)
+        # District-level facility mix (display-only context, D27): a
+        # planning-gap result carried mostly by clinics/labs deserves a
+        # visible caution before anyone interprets it.
+        mix_sentence = None
+        if district:
+            mix = facility_mix_counts(subset)
+            mix_sentence = facility_mix_sentence(mix, len(subset))
+            if summary["region_status"] == REGION_PLANNING_GAP and mix_warning_applies(mix):
+                st.warning(f"⚠️ {MIX_GAP_WARNING}")
         decision_path_row(summary, config)
         metrics_row(summary)
         distribution_bar(subset)
-        technical_metrics_expander(summary)
+        technical_metrics_expander(summary, mix_sentence)
         if not district:
             st.caption(
                 "State-level numbers are high-level summaries — select a district for the "

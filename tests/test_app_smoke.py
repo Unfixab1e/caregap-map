@@ -109,6 +109,28 @@ def test_workflow_sidebar_replaces_pills_and_consolidates_about():
 
 
 @needs_data
+def test_title_links_back_to_all_india_and_district_view_extras():
+    """The title is a link to './' (drops query params -> All-India map);
+    district views show the overlap caption and the context explanation."""
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    markdown = " ".join(str(m.value) for m in at.markdown)
+    assert 'href="./"' in markdown and "CareGap Map" in markdown
+
+    at.query_params["state"] = "Kerala"
+    at2 = AppTest.from_file(str(APP), default_timeout=120)
+    at2.query_params["state"] = "Kerala"
+    at2.run()
+    district_box = next(sb for sb in at2.selectbox if sb.label == "District (optional)")
+    district_box.select(district_box.options[1])
+    at2.run()
+    assert not at2.exception, at2.exception
+    captions = " ".join(str(c.value) for c in at2.caption)
+    assert "markers can overlap" in captions
+    assert "affects review priority only" in captions
+
+
+@needs_data
 def test_workflow_indicator_advances_with_selection():
     at = AppTest.from_file(str(APP), default_timeout=120)
     at.run()

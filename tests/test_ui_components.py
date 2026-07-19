@@ -164,6 +164,154 @@ class TestDistribution:
         assert all(r["count"] == 0 for r in rows)
 
 
+class TestFacilityContext:
+    def test_expected_classifications(self):
+        from caregap_map.ui_components import (
+            CONTEXT_GENERAL,
+            CONTEXT_OUTPATIENT,
+            CONTEXT_SPECIALTY,
+            CONTEXT_UNKNOWN,
+            facility_context,
+        )
+
+        cases = {
+            "Multispeciality Hospital": CONTEXT_GENERAL,
+            "General Hospital": CONTEXT_GENERAL,
+            "Medical College Hospital": CONTEXT_GENERAL,
+            "Sunrise Hospital": CONTEXT_GENERAL,  # unqualified hospital name
+            "Eye Hospital": CONTEXT_SPECIALTY,
+            "Kidney Hospital & Stone Clinic": CONTEXT_SPECIALTY,
+            "Dental Clinic": CONTEXT_OUTPATIENT,
+            "Tooth Care Clinic": CONTEXT_OUTPATIENT,
+            "Path Lab": CONTEXT_OUTPATIENT,
+            "Pathology Lab": CONTEXT_OUTPATIENT,
+            "Diagnostic Centre": CONTEXT_OUTPATIENT,
+            "Apollo Pharmacy": CONTEXT_OUTPATIENT,
+            "Dr. A. K. Sharma": CONTEXT_OUTPATIENT,
+            "The Smile World": CONTEXT_UNKNOWN,  # ambiguous stays unknown
+            "": CONTEXT_UNKNOWN,
+            None: CONTEXT_UNKNOWN,
+        }
+        for name, expected in cases.items():
+            assert facility_context(name) == expected, name
+
+    def test_context_never_changes_scoring_or_classification(self):
+        from caregap_map.scoring import score_facility
+        from caregap_map.ui_components import facility_context
+
+        record = {
+            "name": "City Path Lab",
+            "description": "A diagnostic laboratory.",
+            "procedure": '["blood tests"]',
+            "equipment": '["analyser"]',
+            "source_urls": '["https://example.org"]',
+            "latitude": "10.0",
+            "longitude": "76.0",
+        }
+        before = score_facility(record)
+        facility_context(record["name"], "facility")
+        after = score_facility(record)
+        assert after.classification == before.classification
+        assert after.capability_evidence_score == before.capability_evidence_score
+        assert after.data_completeness_score == before.data_completeness_score
+
+
+class TestContextAwarePriority:
+    def test_hospital_like_records_outrank_labs_and_dentists(self):
+        subset = pd.DataFrame(
+            [
+                facility("lab", CLASS_NEEDS_REVIEW, evidence=90) | {"name": "City Path Lab"},
+                facility("dental", CLASS_NEEDS_REVIEW, evidence=88) | {"name": "Pearl Dental Clinic"},
+                facility("hosp", CLASS_NEEDS_REVIEW, evidence=50) | {"name": "Shelar Hospital"},
+                facility("eye", CLASS_NEEDS_REVIEW, evidence=60) | {"name": "City Eye Hospital"},
+            ]
+        )
+        priority = select_priority_facilities(subset, REGION_NEEDS_REVIEW)
+        ids = priority["unique_id"].tolist()
+        # General hospital first, then specialty hospital, then outpatient
+        # by evidence - context ranks before raw evidence within a tier.
+        assert ids == ["hosp", "eye", "lab", "dental"]
+        assert priority.iloc[0]["facility_context"] == "Likely general-hospital context"
+
+    def test_outpatient_records_remain_in_the_data(self):
+        subset = pd.DataFrame(
+            [
+                facility("lab", CLASS_NEEDS_REVIEW, evidence=90) | {"name": "City Path Lab"},
+                facility("hosp", CLASS_NEEDS_REVIEW, evidence=50) | {"name": "Shelar Hospital"},
+            ]
+        )
+        before = subset.copy(deep=True)
+        priority = select_priority_facilities(subset, REGION_NEEDS_REVIEW)
+        pd.testing.assert_frame_equal(subset, before)  # never mutated/dropped
+        assert set(priority["unique_id"]) == {"lab", "hosp"}  # still listed, just later
+
+
+class TestMapView:
+    def test_identical_coordinates_get_max_zoom_without_crashing(self):
+        from caregap_map.ui_components import MAP_MAX_ZOOM, map_view
+
+        lat, lon, zoom = map_view([10.0, 10.0, 10.0], [76.0, 76.0, 76.0])
+        assert (lat, lon) == (10.0, 76.0)
+        assert zoom == MAP_MAX_ZOOM
+
+    def test_single_facility(self):
+        from caregap_map.ui_components import MAP_MAX_ZOOM, map_view
+
+        assert map_view([10.0], [76.0])[2] == MAP_MAX_ZOOM
+
+    def test_wide_spread_clamps_to_min_zoom(self):
+        from caregap_map.ui_components import MAP_MIN_ZOOM, map_view
+
+        assert map_view([8.0, 33.0], [70.0, 95.0])[2] == MAP_MIN_ZOOM
+
+    def test_center_is_extent_midpoint_and_inputs_unmodified(self):
+        from caregap_map.ui_components import map_view
+
+        lats, lons = [10.0, 12.0], [70.0, 74.0]
+        lat, lon, zoom = map_view(lats, lons)
+        assert (lat, lon) == (11.0, 72.0)
+        assert lats == [10.0, 12.0] and lons == [70.0, 74.0]  # never jittered
+        assert map_view(lats, lons) == (lat, lon, zoom)  # deterministic
+
+    def test_marker_style_is_visible(self):
+        from caregap_map.ui_components import MAP_MARKER
+
+        assert 12 <= MAP_MARKER["size"] <= 15
+        assert MAP_MARKER["opacity"] >= 0.8
+
+
+class TestFacilityMix:
+    def test_counts_and_sentence(self):
+        from caregap_map.ui_components import facility_mix_counts, facility_mix_sentence
+
+        subset = pd.DataFrame(
+            [
+                facility("a", CLASS_LIKELY_GAP) | {"name": "General Hospital"},
+                facility("b", CLASS_LIKELY_GAP) | {"name": "Eye Hospital"},
+                facility("c", CLASS_LIKELY_GAP) | {"name": "Path Lab"},
+                facility("d", CLASS_LIKELY_GAP) | {"name": "Mystery Place"},
+            ]
+        )
+        counts = facility_mix_counts(subset)
+        sentence = facility_mix_sentence(counts, len(subset))
+        assert sentence == (
+            "Of 4 supplied records, 1 appear to be general-hospital contexts, "
+            "1 specialty contexts, 1 outpatient/diagnostic contexts and 1 unknown."
+        )
+
+    def test_gap_warning_only_when_relevant(self):
+        from caregap_map.ui_components import (
+            CONTEXT_GENERAL,
+            CONTEXT_OUTPATIENT,
+            mix_warning_applies,
+        )
+
+        assert mix_warning_applies({CONTEXT_OUTPATIENT: 3, CONTEXT_GENERAL: 1})
+        assert mix_warning_applies({CONTEXT_OUTPATIENT: 1, CONTEXT_GENERAL: 0})
+        assert not mix_warning_applies({CONTEXT_OUTPATIENT: 1, CONTEXT_GENERAL: 4})
+        assert not mix_warning_applies({CONTEXT_OUTPATIENT: 0, CONTEXT_GENERAL: 0})
+
+
 class TestDistrictCentroids:
     def _scored(self):
         def rec(uid, state, district, lat, lon, coord_status="ok"):
@@ -269,3 +417,43 @@ class TestExampleRegions:
         examples = example_regions(regions)
         assert "Data desert" not in examples
         assert len(examples) == 2
+
+    def test_planning_gap_example_prefers_hospital_rich_district(self):
+        def region(state, district, status, count):
+            return {
+                "state": state,
+                "district": district,
+                "region_status": status,
+                "facility_count": count,
+            }
+
+        regions = pd.DataFrame(
+            [
+                # LabTown has more records but is dominated by labs/dentists.
+                region("A", "LabTown", REGION_PLANNING_GAP, 8),
+                region("A", "HospTown", REGION_PLANNING_GAP, 6),
+            ]
+        )
+
+        def rec(uid, district, name, coord_status="ok"):
+            return {
+                "unique_id": uid,
+                "state_final": "A",
+                "district_final": district,
+                "name": name,
+                "organization_type": "facility",
+                "coord_status": coord_status,
+            }
+
+        scored = pd.DataFrame(
+            [rec(f"l{i}", "LabTown", f"Path Lab {i}") for i in range(6)]
+            + [rec("l6", "LabTown", "Dental Clinic"), rec("l7", "LabTown", "Some Hospital")]
+            + [rec(f"h{i}", "HospTown", f"General Hospital {i}") for i in range(4)]
+            + [rec("h4", "HospTown", "Eye Hospital"), rec("h5", "HospTown", "City Path Lab")]
+        )
+        examples = example_regions(regions, scored)
+        assert examples["Potential planning gap"] == ("A", "HospTown")
+        # Deterministic and unchanged on repeat calls.
+        assert example_regions(regions, scored) == examples
+        # Fallback without scored data: most records wins (old behavior).
+        assert example_regions(regions)["Potential planning gap"] == ("A", "LabTown")
