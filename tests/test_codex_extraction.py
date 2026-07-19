@@ -413,7 +413,7 @@ class TestCliScript:
     def _write_source(self, tmp_path) -> Path:
         rows = [
             {
-                "unique_id": f"f{i:03d}",
+                "unique_id": f"facrec-{i:03d}",
                 "state_final": "Kerala",
                 "classification": "Likely Medical Gap",
                 "capability_evidence_score": 0,
@@ -462,7 +462,7 @@ class TestCliScript:
     def test_gate_refuses_over_500_selected(self, tmp_path, monkeypatch):
         rows = [
             {
-                "unique_id": f"g{i:04d}",
+                "unique_id": f"gaprec-{i:04d}",
                 "state_final": "Kerala",
                 "classification": "Likely Medical Gap",
                 "capability_evidence_score": 0,
