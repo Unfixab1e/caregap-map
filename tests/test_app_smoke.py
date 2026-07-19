@@ -78,6 +78,55 @@ def test_state_selection_updates_summary():
 
 
 @needs_data
+def test_workflow_sidebar_replaces_pills_and_consolidates_about():
+    """D26: task sidebar + anchors render; the old pills row is gone; the
+    four methodology boxes live inside one collapsed About expander."""
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    assert not at.exception, at.exception
+    markdown = " ".join(str(m.value) for m in at.markdown)
+
+    # Old top workflow-pill row no longer renders.
+    assert 'class="cg-workflow"' not in markdown
+
+    # Sidebar workflow: headline, all four step cards, fragment-only links.
+    assert "CareGap workflow" in markdown
+    for anchor_id in ("select-region", "understand-evidence", "review-facilities", "save-scenario"):
+        assert f'href="#{anchor_id}"' in markdown  # sidebar nav link
+        assert f'id="{anchor_id}"' in markdown  # main-content anchor target
+
+    # Main-content indicator matches the sidebar state (All India -> step 1).
+    captions = " ".join(str(c.value) for c in at.caption)
+    assert "Step 1 of 4 — Select a region" in captions
+
+    # About consolidation: one expander, old top-level boxes gone, content kept.
+    expander_labels = [e.label for e in at.expander]
+    assert "About this assessment" in expander_labels
+    for old_label in ("Evidence policy v1", "Methodology", "Dataset limitations", "Technical details"):
+        assert old_label not in expander_labels
+    assert "A record can be **Trusted** only when:" in markdown  # policy intact
+    assert "Dataset limitations" in markdown  # heading inside the expander
+
+
+@needs_data
+def test_workflow_indicator_advances_with_selection():
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    next(sb for sb in at.selectbox if sb.label == "State").select("Kerala")
+    at.run()
+    assert not at.exception, at.exception
+    captions = " ".join(str(c.value) for c in at.caption)
+    assert "Step 2 of 4 — Understand the evidence" in captions
+    # Explicitly inspecting a facility advances to step 3.
+    facility_box = next(sb for sb in at.selectbox if sb.label == "Inspect a facility")
+    facility_box.select(facility_box.options[1])
+    at.run()
+    assert not at.exception, at.exception
+    captions = " ".join(str(c.value) for c in at.caption)
+    assert "Step 3 of 4 — Review priority facilities" in captions
+
+
+@needs_data
 def test_national_evidence_landscape_is_the_landing_view():
     """D25: All India opens on the evidence landscape; a district view does
     not render it and keeps the facility map for the investigative detail."""

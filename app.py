@@ -75,6 +75,11 @@ from caregap_map.ui_components import (  # noqa: E402
     status_distribution,
 )
 from caregap_map.ui_state import desired_region_params, normalize_region_request  # noqa: E402
+from caregap_map.workflow import (  # noqa: E402
+    current_step_label,
+    infer_workflow_state,
+    sidebar_workflow_html,
+)
 
 # Status colors (validated with the dataviz palette checker, severity order:
 # trusted -> review -> gap -> no data so green/red are never adjacent).
@@ -126,13 +131,6 @@ LANDSCAPE_CAPTION = (
     "ICU operation, population coverage, travel access or service capacity."
 )
 
-WORKFLOW_STEPS = [
-    "Select region",
-    "Understand the evidence",
-    "Review priority facilities",
-    "Save a planning scenario",
-]
-
 st.set_page_config(
     page_title="CareGap Map",
     page_icon="🏥",
@@ -147,10 +145,18 @@ _CSS = """
 .block-container {padding-top: 4.25rem; padding-bottom: 3rem;}
 .cg-title {font-size: 1.9rem; font-weight: 800; line-height: 1.15; margin: 0;}
 .cg-subtitle {font-size: 1.0rem; opacity: .78; margin: .1rem 0 .55rem 0;}
-.cg-workflow {display: flex; gap: .45rem; flex-wrap: wrap; margin: 0 0 .8rem 0;}
-.cg-step {border: 1px solid rgba(128,128,128,.4); border-radius: 999px;
-          padding: .18rem .75rem; font-size: .86rem; white-space: nowrap;}
-.cg-step b {opacity: .6; margin-right: .35rem; font-weight: 700;}
+.cg-anchor {display: block; position: relative; visibility: hidden;
+            scroll-margin-top: 4.5rem; height: 0;}
+.cg-wf {display: flex; flex-direction: column; gap: .45rem; margin-bottom: 1rem;}
+.cg-wf-step {display: flex; gap: .55rem; align-items: flex-start;
+             border: 1px solid rgba(128,128,128,.35); border-radius: 10px;
+             padding: .45rem .6rem; text-decoration: none !important; color: inherit;}
+.cg-wf-step.current {border: 2px solid #1c83e1; background: rgba(28,131,225,.08);}
+.cg-wf-step.current .cg-wf-title {font-weight: 750;}
+.cg-wf-step.done {opacity: .72;}
+.cg-wf-mark {min-width: 1rem; font-weight: 700; line-height: 1.35;}
+.cg-wf-title {display: block; font-weight: 600; font-size: .92rem; color: inherit;}
+.cg-wf-desc {display: block; font-size: .8rem; opacity: .78; font-weight: 400;}
 .cg-chip {display: inline-block; border-radius: 999px; padding: .28rem .85rem;
           font-weight: 750; font-size: 1.08rem; letter-spacing: .01em;}
 .cg-counts {font-size: .95rem; opacity: .92; margin-top: .35rem;}
@@ -193,12 +199,9 @@ def status_chip(status: str) -> str:
     )
 
 
-def workflow_strip() -> None:
-    steps = "".join(
-        f'<span class="cg-step"><b>{i}</b>{label}</span>'
-        for i, label in enumerate(WORKFLOW_STEPS, 1)
-    )
-    st.markdown(f'<div class="cg-workflow">{steps}</div>', unsafe_allow_html=True)
+def anchor(key: str) -> None:
+    """Stable in-page navigation target for the sidebar workflow links."""
+    st.markdown(f'<div id="{key}" class="cg-anchor"></div>', unsafe_allow_html=True)
 
 
 def classification_chart(df: pd.DataFrame, group_col: str, title: str) -> None:
@@ -548,8 +551,9 @@ def technical_metrics_expander(summary: dict) -> None:
         )
         st.markdown(f"**Stored regional reasoning:** {summary['region_status_reason']}")
         st.caption(
-            f"Thresholds and the complete Trusted rule are documented under "
-            f"“{EVIDENCE_POLICY_TITLE}” in the sidebar. {EVIDENCE_POLICY_CAPTION}"
+            f"Thresholds and the complete Trusted rule are documented in the sidebar "
+            f"under “About this assessment → {EVIDENCE_POLICY_TITLE}”. "
+            f"{EVIDENCE_POLICY_CAPTION}"
         )
 
 
@@ -603,6 +607,7 @@ def priority_facilities_section(subset: pd.DataFrame, region_status: str) -> Non
             with action:
                 if st.button("Review evidence", key=f"review_{row['unique_id']}"):
                     st.session_state["focus_facility"] = row["unique_id"]
+                    st.session_state["wf_facility_reviewed"] = True
                     st.rerun()
 
 
@@ -617,14 +622,15 @@ def scenarios_panel(
     """Step 4: save the current planning view; list/reopen/delete scenarios."""
     store = scenario_store()
     st.caption(
-        "Save the selected region, current evidence status, metrics and planner notes "
-        "so the decision can be reopened and reviewed later. Scenarios persist across "
-        "page refreshes and app restarts (a snapshot of supplied-record evidence - "
-        "not a verified coverage assessment)."
+        "Save the selected region, its evidence status, metrics and your notes so the "
+        "decision can be reopened and reviewed later - by you or a colleague. A scenario "
+        "records supplied-record evidence, not a verified coverage assessment."
     )
     snapshot = data_snapshot_id(scored)
     attachable = len(subset) <= 50
 
+    if saved_msg := st.session_state.pop("scenario_saved_msg", None):
+        st.success(saved_msg)
     with st.container(border=True), st.form(key="scenario_form", clear_on_submit=True):
         st.markdown("**💾 Save this planning scenario**")
         name = st.text_input("Scenario name", max_chars=120)
@@ -662,7 +668,13 @@ def scenarios_panel(
                 )
                 with st.spinner("Saving scenario…"):
                     saved = store.save_scenario(scenario)
-                st.success(f"Saved scenario “{saved.name}” ({saved.region_label}).")
+                # Marking Step 4 complete needs a rerun so the sidebar and the
+                # main indicator update together; the message survives it.
+                st.session_state["wf_scenario_saved"] = True
+                st.session_state["scenario_saved_msg"] = (
+                    f"Saved scenario “{saved.name}” ({saved.region_label})."
+                )
+                st.rerun()
 
     with st.spinner("Loading scenarios…"):
         saved_scenarios = store.list_scenarios()
@@ -687,8 +699,11 @@ def scenarios_panel(
             f"{scenario.no_icu_evidence_count} · insufficient {scenario.insufficient_data_count}  \n"
             f"Judgeable {scenario.judgeable_pct:.0f} % · trusted-record share "
             f"{scenario.trusted_record_share_pct:.0f} % · evidence index "
-            f"{scenario.trust_weighted_evidence_index:.2f}  \n"
-            f"Config `{scenario.scoring_config_hash}` · data `{scenario.data_snapshot}`"
+            f"{scenario.trust_weighted_evidence_index:.2f}"
+        )
+        st.caption(
+            f"Audit trail: evidence policy `{scenario.scoring_config_hash}` · "
+            f"data snapshot `{scenario.data_snapshot}`"
         )
         if scenario.note:
             st.markdown(f"> {scenario.note}")
@@ -696,8 +711,8 @@ def scenarios_panel(
             st.caption(f"{len(scenario.selected_facility_ids)} attached facility ID(s).")
         if scenario.data_snapshot != snapshot:
             st.warning(
-                "This scenario was saved against a different data snapshot - the numbers "
-                "shown above may not be reproducible from the currently loaded data."
+                "This scenario was saved against an older version of the data - its "
+                "numbers may differ from what the app currently shows."
             )
         col_open, col_delete = st.columns(2)
         with col_open:
@@ -870,8 +885,7 @@ def facility_detail(row: pd.Series) -> None:
     notes_panel(
         "facility",
         row["unique_id"],
-        "Notes persist in the configured review store (SQLite locally, "
-        "Delta table on Databricks) and survive page refreshes.",
+        "Notes are saved with this facility and visible to anyone who reviews it later.",
     )
 
     # ---------------- E. Technical details (collapsed) ----------------
@@ -952,37 +966,46 @@ def facility_detail(row: pd.Series) -> None:
             st.caption("No source URLs in the supplied record.")
 
 
-def sidebar_secondary(config) -> None:
-    """Secondary information only - the workflow lives on the main page."""
+def sidebar_nav(wf_state) -> None:
+    """The task-oriented planner workflow - the sidebar's primary content."""
     with st.sidebar:
-        st.markdown("### About this assessment")
-        with st.expander(EVIDENCE_POLICY_TITLE):
-            for line in evidence_policy_lines(config):
-                st.markdown(line)
-            st.caption(EVIDENCE_POLICY_CAPTION)
-        with st.expander("Methodology"):
-            st.markdown(
-                "Every classification is traceable to exact text fragments from the "
-                "supplied facility record. Two independent scores (ICU evidence "
-                "strength, record judgeability) plus deterministic validators feed a "
-                "four-state classification; regions separate potential planning gaps "
-                "from data deserts. See README.md and DECISIONS.md in the repository."
-            )
-        with st.expander("Dataset limitations"):
-            st.markdown(
-                "The supplied fields are structured claims generated upstream from "
-                "website text and images - not verified clinical facts. CareGap Map "
-                "assesses evidence in supplied facility records. It does not verify "
-                "current ICU operation, bed availability, staffing availability or "
-                "clinical service access."
-            )
-            st.caption(REGION_DISCLAIMER)
-        with st.expander("Technical details"):
-            st.markdown(
-                f"- Scoring-config fingerprint: `{scoring_config_fingerprint(config)}`\n"
-                "- Data source: precomputed deterministic snapshot (no live model calls)\n"
-                "- State/district selection persists in the URL query parameters"
-            )
+        st.markdown("### CareGap workflow")
+        st.markdown(sidebar_workflow_html(wf_state), unsafe_allow_html=True)
+
+
+def sidebar_secondary(config) -> None:
+    """Methodology and limitations: one collapsed expander at the bottom."""
+    with st.sidebar, st.expander("About this assessment", expanded=False):
+        st.markdown(f"**{EVIDENCE_POLICY_TITLE}**")
+        for line in evidence_policy_lines(config):
+            st.markdown(line)
+        st.caption(EVIDENCE_POLICY_CAPTION)
+        st.divider()
+        st.markdown("**Methodology**")
+        st.markdown(
+            "Every classification is traceable to exact text fragments from the "
+            "supplied facility record. Two independent scores (ICU evidence "
+            "strength, record judgeability) plus deterministic validators feed a "
+            "four-state classification; regions separate potential planning gaps "
+            "from data deserts. See README.md and DECISIONS.md in the repository."
+        )
+        st.divider()
+        st.markdown("**Dataset limitations**")
+        st.markdown(
+            "The supplied fields are structured claims generated upstream from "
+            "website text and images - not verified clinical facts. CareGap Map "
+            "assesses evidence in supplied facility records. It does not verify "
+            "current ICU operation, bed availability, staffing availability or "
+            "clinical service access."
+        )
+        st.caption(REGION_DISCLAIMER)
+        st.divider()
+        st.markdown("**Technical details**")
+        st.markdown(
+            f"- Scoring-config fingerprint: `{scoring_config_fingerprint(config)}`\n"
+            "- Data source: precomputed deterministic snapshot (no live model calls)\n"
+            "- State/district selection persists in the URL query parameters"
+        )
 
 
 def main() -> None:
@@ -994,7 +1017,6 @@ def main() -> None:
         "</div>",
         unsafe_allow_html=True,
     )
-    workflow_strip()
 
     try:
         scored, region_state, region_district = load_data()
@@ -1007,9 +1029,9 @@ def main() -> None:
         return
 
     config = load_scoring_config()
-    sidebar_secondary(config)
 
     # ---------------- 1 · Select region (top control bar) ----------------
+    anchor("select-region")
     # A reopened scenario sets the selection before the widgets instantiate;
     # otherwise a fresh session (e.g. after a page refresh) restores the
     # region from the URL query parameters. Unknown values fall back to
@@ -1109,7 +1131,24 @@ def main() -> None:
     if district:
         region_label = f"{state} / {district}"
 
+    # ---------------- Workflow state (session facts only, D26) ----------------
+    region_key = f"{state}|{district or ''}"
+    if st.session_state.get("wf_region") != region_key:
+        # A new investigation resets the downstream workflow flags.
+        st.session_state["wf_region"] = region_key
+        st.session_state.pop("wf_facility_reviewed", None)
+        st.session_state.pop("wf_scenario_saved", None)
+    wf_state = infer_workflow_state(
+        region_selected=state != "All India",
+        facility_reviewed=bool(st.session_state.get("wf_facility_reviewed")),
+        scenario_saved=bool(st.session_state.get("wf_scenario_saved")),
+    )
+    # Compact indicator: the sidebar collapses on narrow screens, so the
+    # current step stays visible in the main content too.
+    st.caption(current_step_label(wf_state))
+
     # ---------------- 2 · Understand the evidence ----------------
+    anchor("understand-evidence")
     summary = summarize_facilities(subset, config)
     if state == "All India":
         # National entry view: the evidence landscape is the visual front door.
@@ -1161,7 +1200,14 @@ def main() -> None:
         with st.expander("🗺️ Facility evidence map"):
             map_selected_id = facility_map(subset)
 
+    # A facility clicked on the district map counts as an explicit review
+    # action; the guarded rerun keeps the indicator and sidebar in sync.
+    if map_selected_id and not st.session_state.get("wf_facility_reviewed"):
+        st.session_state["wf_facility_reviewed"] = True
+        st.rerun()
+
     # ---------------- 3 · Review priority facilities ----------------
+    anchor("review-facilities")
     st.header("3 · Review priority facilities", anchor=False)
     priority_facilities_section(subset, summary["region_status"])
 
@@ -1224,7 +1270,12 @@ def main() -> None:
             st.session_state["last_focus_applied"] = focus_id
         if st.session_state.get("facility_select") not in option_labels:
             st.session_state.pop("facility_select", None)
-        choice = st.selectbox("Inspect a facility", option_labels, key="facility_select")
+        choice = st.selectbox(
+            "Inspect a facility",
+            option_labels,
+            key="facility_select",
+            on_change=lambda: st.session_state.__setitem__("wf_facility_reviewed", True),
+        )
         facility_detail(table.loc[options[choice]])
 
     # ---------------- Region-level notes ----------------
@@ -1240,11 +1291,16 @@ def main() -> None:
                     notes_panel("state", state, "Attached to the selected state.")
 
     # ---------------- 4 · Save a planning scenario ----------------
+    anchor("save-scenario")
     st.header("4 · Save a planning scenario", anchor=False)
     try:
         scenarios_panel(state, district, summary, subset, scored, config)
     except Exception as exc:  # scenario persistence must never block the demo
         st.warning(f"Planning scenarios are unavailable right now ({exc}). Notes still work.")
+
+    # Sidebar: the task-oriented workflow on top, methodology below.
+    sidebar_nav(wf_state)
+    sidebar_secondary(config)
 
 
 main()
