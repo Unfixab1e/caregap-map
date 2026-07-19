@@ -5,10 +5,14 @@
 #
 # Deliberately excluded from the app runtime:
 #   openai  - LLM comparison is an offline preprocessing step
-streamlit>=1.35,<2
+# streamlit/plotly are pinned EXACTLY to the locally tested versions: the
+# Databricks Apps runtime pre-installs older releases that satisfy loose
+# ranges (pip then skips the upgrade), and e.g. st.dataframe(width="stretch")
+# crashes on pre-1.49 Streamlit while the plotly map renders zero-sized.
+streamlit==1.55.0
+plotly==6.6.0
 pandas>=2.1,<3
 pyarrow>=14
-plotly>=5.20,<7
 pydantic>=2.6,<3
 # Durable reviewer notes (DeltaReviewStore) + service-principal OAuth
 databricks-sql-connector>=3.0
