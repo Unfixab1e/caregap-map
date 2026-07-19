@@ -48,3 +48,25 @@ def test_stored_constants_are_unchanged():
 def test_region_statuses_pass_through_unchanged():
     assert facility_display_label(REGION_PLANNING_GAP) == REGION_PLANNING_GAP
     assert facility_display_label("anything else") == "anything else"
+
+
+def test_non_hospital_record_semantics_option_a():
+    """D21: a generic dental record stays internally 'Likely Medical Gap' but
+    both the display label and the reason state only evidence absence."""
+    from caregap_map.scoring import score_facility
+
+    record = {
+        "name": "Pearl Dental Clinic",
+        "description": "A modern dental practice offering painless treatment.",
+        "procedure": '["root canal", "tooth extraction"]',
+        "equipment": '["dental X-ray"]',
+        "source_urls": '["https://example.org"]',
+        "latitude": "10.0",
+        "longitude": "76.0",
+    }
+    score = score_facility(record)
+    assert score.classification == CLASS_LIKELY_GAP  # stored constant, unchanged
+    assert "no credible ICU evidence" in score.classification_reason
+    assert "planning gap" in score.classification_reason  # points to the regional layer
+    assert "capability gap" not in score.classification_reason
+    assert facility_display_label(score.classification) == "No ICU evidence in judgeable record"

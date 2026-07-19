@@ -213,3 +213,71 @@ name-derived specialty tag. Every demotion went to review, none to gap (no manuf
 deserts). This is deliberately strict against false Trusted; the human-labelled
 evaluation (evals/) is the instrument for relaxing it with ground truth
 (`min_corroboration_categories`, `specialty_context` weight are config values).
+
+## D19 — Display labels are mapped, stored class constants stay stable
+
+The headline-metric audit (`scripts/audit_headline_metrics.py`) showed the user-facing
+wording overstated the data: only 35.7 % of the 6,890 facility-level "Likely Medical Gap"
+records are even hospital-like by name (34.5 % are clearly non-hospital: 1,713 dental,
+588 diagnostics/labs, 75 individual doctors, 2 pharmacies), and "coverage" wording invited
+a geographic reading that a record share cannot support.
+
+**Decision:** user-facing labels go through `FACILITY_DISPLAY_LABELS` /
+`facility_display_label()` while the stored constants (Parquet values, tests, history)
+stay unchanged:
+
+- `Likely Medical Gap` displays as **"No ICU evidence in judgeable record"**;
+- `Trusted ICU Coverage` displays as **"Trusted ICU evidence"**;
+- headline metrics renamed: "Trust-weighted ICU coverage" → **"Trust-weighted ICU
+  evidence index"** (0–1 average capability-evidence score weighted by record
+  completeness — not population or geographic coverage); "Evidence coverage" →
+  **"Trusted-record share"** (share of supplied records classified Trusted under the
+  current rules).
+
+The regional wording ("Potential planning gap") is unchanged — the facility level states
+record evidence, the regional layer draws the planning conclusion. The drilldown replaces
+the old persisted "likely a real capability gap" reason with the precise wording at
+display time, so no Parquet rebuild is required.
+
+## D20 — Record judgeability, ICU evidence strength and planning readiness are three concepts
+
+The audit showed 98.84 % of records clear the judgeability threshold, and 86.6 % of those
+pass **solely** on upstream-generated fields (description/procedure/equipment); 74.8 %
+lack capacity and 63.6 % lack a doctor count. "Judgeable" therefore must not be presented
+as "planning-ready" or "fully documented".
+
+**Decision:** three separately displayed concepts:
+
+1. **Record judgeability** (`data_completeness_score`) — are the supplied record's fields
+   populated enough to evaluate what the record claims?
+2. **ICU evidence strength** (`capability_evidence_score` + classification) — how strongly
+   does the record support ICU capability?
+3. **Planning readiness** (`caregap_map.planning`) — a transparent six-item checklist
+   (valid coordinates, resolved district, source URL, total capacity, doctor count,
+   determinate evidence status) with Low/Medium/High bands, every component visible in
+   the drilldown. Chosen over another opaque 0–100 score; never feeds classification.
+
+## D21 — ICU judgeability semantics: clarify, don't reclassify (Option A)
+
+A generic record (dental clinic: "root canal", "dental X-ray") is complete as a supplied
+record but uninformative for ICU assessment. Three options were evaluated: (A) keep the
+current judgeability and clarify its semantics; (B) add a separate ICU-specific
+judgeability score gating absence inferences; (C) restrict regional planning-gap
+candidates to hospital-like records.
+
+**Decision: Option A.** The displayed facility state now reads exactly what is defensible
+— "the supplied record is sufficiently populated, but no ICU evidence was found" — via
+D19's label mapping, and the audit report quantifies the non-hospital share of the gap
+bucket. B and C are rejected *for now* because both change classification/aggregation
+behaviour while the human-labelled evaluation set contains **zero completed labels** on
+this machine (Nayun's 18-case review file is stored privately elsewhere; only the summary
+is committed). B would build a second opaque score on the same generated fields it is
+meant to distrust; C would gate regional conclusions on the name-based audit categorizer,
+which is explicitly not clinical truth — misnamed hospitals would be silently excluded
+with no ground truth to measure the false-exclusion rate. Revisit both once the expanded
+evaluation sample (stratified by audit category and subtype) is labelled; the audit
+report's per-category and per-district breakdowns are the before/after baseline.
+
+**Consequence:** no facility counts or regional statuses changed in this phase
+(before = after: 203 / 2,867 / 6,890 / 117; districts 103 trusted-evidence, 256 needs
+verification, 32 potential planning gap, 186 data deserts).
