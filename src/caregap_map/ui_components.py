@@ -168,14 +168,42 @@ def primary_flag(row: pd.Series | dict) -> str | None:
     return humanize_flag(flags[0].get("name", ""))
 
 
+NEAR_TRUSTED_REASON = "Near Trusted — review corroboration"
+
+
 def priority_reasonings() -> dict[str, str]:
     """Priority tiers and their transparent, fixed explanations."""
     return {
+        "near_trusted": NEAR_TRUSTED_REASON,
         "review": "Unresolved ICU claim — human review required",
         "trusted_flagged": "Trusted evidence carrying validator flags — spot-check first",
         "trusted": "Trusted evidence — verify operational details",
         "gap": "Well-populated record without ICU evidence",
     }
+
+
+def review_priority_rank(row: pd.Series | dict, trust_threshold: int = 45) -> int:
+    """Transparent ordering WITHIN Needs Human Review (D28, display only):
+
+    0 — near Trusted: high evidence, explicit claim, no blocking flags
+        (one corroboration category short);
+    1 — high evidence with suspicious-content flags;
+    2 — ambiguous evidence scores;
+    3 — contradictory claims.
+
+    A review-priority label only - it never changes classification.
+    """
+    if int(row.get("n_contradiction_flags") or 0) > 0:
+        return 3
+    flags_raw = row.get("validation_flags_json")
+    flags = json.loads(flags_raw) if isinstance(flags_raw, str) and flags_raw else []
+    has_suspicious = any(f.get("severity") == "suspicious" for f in flags)
+    high = int(row.get("capability_evidence_score") or 0) >= trust_threshold
+    if high and has_suspicious:
+        return 1
+    if high and bool(row.get("explicit_icu_claim")):
+        return 0
+    return 2
 
 
 def select_priority_facilities(
@@ -199,11 +227,18 @@ def select_priority_facilities(
     work["_ctx_rank"] = work["facility_context"].map(CONTEXT_PRIORITY_RANK)
     parts: list[pd.DataFrame] = []
 
-    review = work[work["classification"] == CLASS_NEEDS_REVIEW].sort_values(
-        ["_ctx_rank", "capability_evidence_score", "data_completeness_score", "unique_id"],
-        ascending=[True, False, False, True],
-    )
-    parts.append(review.assign(priority_reason=reasons["review"]))
+    review = work[work["classification"] == CLASS_NEEDS_REVIEW].copy()
+    if len(review):
+        review["_review_rank"] = [review_priority_rank(r) for _, r in review.iterrows()]
+        review = review.sort_values(
+            ["_review_rank", "_ctx_rank", "capability_evidence_score", "unique_id"],
+            ascending=[True, True, False, True],
+        )
+        review["priority_reason"] = review["_review_rank"].map(
+            lambda rank: reasons["near_trusted"] if rank == 0 else reasons["review"]
+        )
+        review = review.drop(columns=["_review_rank"])
+    parts.append(review)
 
     trusted = work[work["classification"] == CLASS_TRUSTED]
     flagged = trusted[trusted["n_validation_flags"] > 0].sort_values(

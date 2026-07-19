@@ -249,6 +249,70 @@ def assess_operational_data(
 
 
 # ---------------------------------------------------------------------------
+# Trust requirements (evidence policy v2 gate display, D28)
+# ---------------------------------------------------------------------------
+
+
+class TrustGate(BaseModel):
+    label: str
+    met: bool
+
+
+def trust_requirements(
+    record: Mapping[str, Any], config: ScoringConfig | None = None
+) -> tuple[list[TrustGate], str]:
+    """The six Trusted gates for one scored row, plus a corroboration line.
+
+    Display-only: reads the stored scores/flags and explains why a record
+    is green or still yellow. The corroboration line names the accepted
+    categories ("Substantive description evidence + equipment") instead of
+    a bare count.
+    """
+    config = config or ScoringConfig()
+    t = config.thresholds
+    flags = json.loads(record.get("validation_flags_json") or "[]")
+    has_suspicious = any(f.get("severity") == "suspicious" for f in flags)
+    has_contradiction = int(record.get("n_contradiction_flags") or 0) > 0
+    categories = list(json.loads(record.get("corroboration_categories_json") or "[]"))
+    n = len(categories)
+    description_corroboration = bool(record.get("description_corroboration") or False)
+    corroboration_met = n >= t.min_corroboration_categories or (
+        description_corroboration and n >= 1
+    )
+
+    gates = [
+        TrustGate(
+            label="Record is judgeable",
+            met=int(record.get("data_completeness_score") or 0) >= t.sufficient_completeness,
+        ),
+        TrustGate(label="Explicit ICU claim", met=bool(record.get("explicit_icu_claim"))),
+        TrustGate(
+            label="Evidence score reaches threshold",
+            met=int(record.get("capability_evidence_score") or 0) >= t.high_evidence,
+        ),
+        TrustGate(label="No blocking contradiction", met=not has_contradiction),
+        TrustGate(label="No blocking suspicious claim", met=not has_suspicious),
+        TrustGate(label="Corroboration requirement met", met=corroboration_met),
+    ]
+
+    if n >= t.min_corroboration_categories:
+        explanation = f"Corroboration accepted through: {' + '.join(categories)}"
+    elif description_corroboration and n >= 1:
+        explanation = (
+            f"Corroboration accepted through: substantive description evidence + "
+            f"{' + '.join(categories)} (evidence policy v2)"
+        )
+    else:
+        explanation = (
+            f"{n} of {t.min_corroboration_categories} operational categories present"
+            + (f" ({' + '.join(categories)})" if categories else "")
+            + " — a substantive description statement plus one operational category "
+            "would also satisfy the requirement (evidence policy v2)."
+        )
+    return gates, explanation
+
+
+# ---------------------------------------------------------------------------
 # Automated evidence assessment (separate from the checklist)
 # ---------------------------------------------------------------------------
 

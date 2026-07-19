@@ -222,7 +222,7 @@ def reviewer_action(classification: str) -> str:
 # Evidence policy (versioned settings, not planner preferences)
 # ---------------------------------------------------------------------------
 
-EVIDENCE_POLICY_TITLE = "Evidence policy v1"
+EVIDENCE_POLICY_TITLE = "Evidence policy v2"
 
 EVIDENCE_POLICY_CAPTION = (
     "These are versioned evidence-policy settings, not planner preferences. "
@@ -241,8 +241,14 @@ def evidence_policy_lines(config: ScoringConfig | None = None) -> list[str]:
         f"- its evidence score reaches the trust threshold ({t.high_evidence});",
         "- it contains an explicit ICU claim;",
         f"- it has at least {t.min_corroboration_categories} distinct corroborating "
-        "evidence categories;",
+        "evidence categories, **or** (policy v2, D28) a substantive description-level "
+        "ICU statement - echoed in a structured field - plus one operational category "
+        "(equipment, procedure, staffing or an anchored ICU bed count);",
         "- it has no contradiction or blocking suspicious flag.",
+        "",
+        "A bare ICU keyword or list entry is never sufficient. Description "
+        "corroboration is evidence within the supplied record, not independent "
+        "external verification.",
         "",
         f"Judgeability threshold: **{t.sufficient_completeness}** · "
         f"low-evidence threshold: **{t.low_evidence}** · "

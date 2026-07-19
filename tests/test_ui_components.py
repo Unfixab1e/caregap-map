@@ -97,6 +97,38 @@ class TestPrioritySelection:
         pd.testing.assert_frame_equal(subset, before)
 
 
+class TestReviewPriorityRank:
+    def test_near_trusted_ordering_and_label(self):
+        from caregap_map.ui_components import NEAR_TRUSTED_REASON
+
+        def review_row(uid, name, evidence, explicit=True, suspicious=False, contradiction=0):
+            row = facility(uid, CLASS_NEEDS_REVIEW, evidence=evidence)
+            row["name"] = name
+            row["explicit_icu_claim"] = explicit
+            row["n_contradiction_flags"] = contradiction
+            if suspicious:
+                row["validation_flags_json"] = json.dumps(
+                    [{"name": "x", "severity": "suspicious", "detail": "d"}]
+                )
+            return row
+
+        subset = pd.DataFrame(
+            [
+                review_row("contra", "Alpha Hospital", 80, contradiction=1),
+                review_row("ambig", "Beta Hospital", 30),
+                review_row("susp", "Gamma Hospital", 80, suspicious=True),
+                review_row("near", "Delta Hospital", 80),
+            ]
+        )
+        priority = select_priority_facilities(subset, REGION_NEEDS_REVIEW)
+        assert priority["unique_id"].tolist() == ["near", "susp", "ambig", "contra"]
+        reasons = dict(zip(priority["unique_id"], priority["priority_reason"], strict=True))
+        assert reasons["near"] == NEAR_TRUSTED_REASON
+        assert reasons["susp"] != NEAR_TRUSTED_REASON
+        # A review-priority label only: classifications are untouched.
+        assert set(priority["classification"]) == {CLASS_NEEDS_REVIEW}
+
+
 class TestFlags:
     def test_humanize(self):
         assert (

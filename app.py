@@ -51,6 +51,7 @@ from caregap_map.planning import (  # noqa: E402
     OPERATIONAL_HELP,
     assess_operational_data,
     assessment_status,
+    trust_requirements,
 )
 from caregap_map.regional_guidance import (  # noqa: E402
     EVIDENCE_POLICY_CAPTION,
@@ -914,6 +915,12 @@ def facility_detail(row: pd.Series) -> None:
             help=OPERATIONAL_HELP,
         )
         st.markdown(f"**Recommended reviewer action:** {reviewer_action(classification)}")
+
+        gates, corroboration_line = trust_requirements(row, load_scoring_config())
+        with st.expander("Trust requirements", expanded=classification == CLASS_NEEDS_REVIEW):
+            for gate in gates:
+                st.markdown(f"{'✅' if gate.met else '❌'} {gate.label}")
+            st.caption(corroboration_line)
 
     # ---------------- B. Exact evidence ----------------
     st.markdown("##### Exact evidence (verbatim from the supplied record)")
