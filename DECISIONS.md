@@ -281,3 +281,21 @@ report's per-category and per-district breakdowns are the before/after baseline.
 **Consequence:** no facility counts or regional statuses changed in this phase
 (before = after: 203 / 2,867 / 6,890 / 117; districts 103 trusted-evidence, 256 needs
 verification, 32 potential planning gap, 186 data deserts).
+
+## D22 — Planning scenarios are structured snapshots, persisted like notes
+
+The Medical Desert Planner track calls for a saved planning scenario; free-text notes
+were the only planner artefact so far.
+
+**Decision:** `PlanningScenario` (`caregap_map.scenarios`) stores a *copy* of what the
+planner saw — state/district, regional status, the five class counts, judgeable %,
+trusted-record share, trust-weighted ICU evidence index, optional facility-ID list
+(≤ 50), planner note — plus a scoring-config fingerprint and a data-snapshot identifier
+(row count + classification digest) so a reopened scenario can detect that the data or
+config has changed since it was saved. Persistence mirrors reviewer notes: SQLite in
+`data/reviews.db` locally, a `planning_scenarios` Delta table via the SQL warehouse on
+Databricks (parameterized queries only), selected by `CAREGAP_SCENARIO_STORE` falling
+back to `CAREGAP_REVIEW_STORE`. Reopening restores the selection; deletion requires an
+explicit confirmation; the UI panel is exception-wrapped so persistence problems can
+never block the demo (notes remain the fallback). Scenario data never feeds scoring or
+classification. No authentication — the author field is free text, as with notes.

@@ -71,6 +71,28 @@ Legend: ✅ code-complete **and** locally tested · 🟡 code-complete, **not li
 - ⬜ 100- and 500-record stability runs, then decide on the full 10,077 sweep
   (~404+ executions; NOT executed)
 
+## Metric defensibility & planner workflow (2026-07-19)
+
+- ✅ Headline-metric audit (`caregap_map.audit` + `scripts/audit_headline_metrics.py`):
+  99% judgeability decomposition, gap-bucket categorization (35.7% hospital-like /
+  34.5% clearly non-hospital), Trusted-record solidity, regional dependencies
+  (64 single-record trusted districts, 88 non-hospital-dominated districts)
+- ✅ Display-label mapping (D19): "No ICU evidence in judgeable record",
+  "Trust-weighted ICU evidence index", "Trusted-record share"; stored constants
+  unchanged; all UI surfaces + persisted-reason override in drilldown
+- ✅ Planning readiness as a six-item checklist (D20), separate from judgeability;
+  visible per-component in the drilldown
+- ✅ ICU judgeability semantics: Option A - clarify, don't reclassify (D21; zero local
+  human labels, so no behavioural change is ground-truth-validated)
+- ✅ Evaluation tooling: codex_assisted + per-audit-category metrics; merge-preserving
+  65-row stratified sample (subtypes + audit categories + disagreements);
+  evals/EVALUATION_STATUS.md aggregate summary
+- ⬜ Human labels (Nayun; file stored off-repo) → recalibrate with ground truth
+- ✅ Persistent planning scenarios (D22): SQLite + Delta stores, save/reopen/delete UI,
+  AppTest acceptance flow incl. restart survival
+- ✅ Docs/demo updated to the defensible wording (README headline-number guide,
+  DEMO_SCRIPT never-say list)
+
 ## Backlog
 
 - ⬜ NFHS district-level join (fuzzy match with recorded confidence)

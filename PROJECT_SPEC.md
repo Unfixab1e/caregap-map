@@ -13,10 +13,14 @@ equivalent to *"no ICU exists."*
 
 ## The four states
 
-Facilities and regions are classified into exactly four states:
+Facilities and regions are classified into exactly four states (stored constants; the
+UI shows the precise display wording of D19):
 
-1. **Trusted ICU Coverage** — high evidence + sufficient data
-2. **Likely Medical Gap** — low evidence + sufficient data
+1. **Trusted ICU Coverage** (displayed *"Trusted ICU evidence"*) — high evidence +
+   sufficient data
+2. **Likely Medical Gap** (displayed *"No ICU evidence in judgeable record"*) — low
+   evidence + sufficient data; the regional layer alone concludes "potential planning
+   gap"
 3. **Insufficient Data / Data Desert** — not enough information to judge
 4. **Needs Human Review** — contradictory, suspicious, or ambiguous evidence
 
@@ -42,6 +46,13 @@ geographic fields.
 
 **The two scores are independent by construction** — completeness never looks at what is
 claimed, evidence never looks at how much is filled in.
+
+Three separately displayed concepts (D20): **record judgeability** (the completeness
+score: are the fields populated enough to evaluate the record's claims?), **ICU evidence
+strength** (the evidence score + classification), and **planning readiness** (a
+transparent six-item checklist over planner-useful fields — coordinates, district,
+source URL, capacity, doctor count, determinate evidence status). Judgeability is never
+presented as planning readiness or "full documentation".
 
 ## Classification logic
 
@@ -73,14 +84,17 @@ JSON file pointed to by `CAREGAP_SCORING_CONFIG` (see DECISIONS.md D5).
 ## Required user workflow
 
 1. Select ICU (fixed) and a state or district.
-2. View trust-weighted regional coverage.
-3. Clearly distinguish likely medical gaps from data deserts.
+2. View the regional evidence summary (trust-weighted ICU evidence index,
+   trusted-record share, judgeable-record share).
+3. Clearly distinguish evidence gaps from data deserts.
 4. Select a risky region.
 5. View the facilities behind the regional result.
 6. Open a facility and inspect: supplied-record claims, exact supporting fragments,
-   missing evidence, contradictions, suspicious claims, score breakdown.
-7. Save a reviewer note or planning scenario
-   (e.g. *"Verify these facilities before classifying this district as an ICU desert."*).
+   missing evidence, contradictions, suspicious claims, score breakdown, and the
+   planning-readiness checklist.
+7. Save a reviewer note (e.g. *"Verify these facilities before classifying this
+   district as an ICU desert."*) and/or a structured **planning scenario** (selection +
+   aggregate metrics + note; reopenable after refresh and restart — D22).
 
 ## Explicit non-goals
 
