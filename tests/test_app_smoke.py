@@ -131,6 +131,23 @@ def test_title_links_back_to_all_india_and_district_view_extras():
 
 
 @needs_data
+def test_attention_district_lines_are_clickable():
+    """Clicking a regions-requiring-attention entry opens that district."""
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    attention = [b for b in at.button if str(getattr(b, "key", "")).startswith("attn_")]
+    assert attention, "no clickable attention entries rendered"
+    target = attention[0]
+    expected_state = target.label.split(" / ")[0]
+    target.click()
+    at.run()
+    assert not at.exception, at.exception
+    assert next(sb for sb in at.selectbox if sb.label == "State").value == expected_state
+    # The selection landed in the URL too (list-valued in AppTest).
+    assert at.query_params.get("state") in (expected_state, [expected_state])
+
+
+@needs_data
 def test_workflow_indicator_advances_with_selection():
     at = AppTest.from_file(str(APP), default_timeout=120)
     at.run()

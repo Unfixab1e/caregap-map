@@ -18,6 +18,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 SRC = Path(__file__).resolve().parent / "src"
 if str(SRC) not in sys.path:
@@ -211,6 +212,31 @@ def status_chip(status: str) -> str:
 def anchor(key: str) -> None:
     """Stable in-page navigation target for the sidebar workflow links."""
     st.markdown(f'<div id="{key}" class="cg-anchor"></div>', unsafe_allow_html=True)
+
+
+def request_scroll(anchor_id: str) -> None:
+    """Ask the NEXT render to scroll to an anchor (used by click handlers)."""
+    st.session_state["scroll_to"] = anchor_id
+
+
+def flush_scroll() -> None:
+    """One-shot smooth scroll to a requested anchor after a rerun.
+
+    The only scripted behavior in the app: Streamlit has no scroll API, so
+    a click that should land the user somewhere (e.g. "Review evidence" ->
+    the facility review) emits this zero-height helper once. It navigates
+    nothing and touches no state or URL.
+    """
+    target = st.session_state.pop("scroll_to", None)
+    if not target:
+        return
+    components.html(
+        f"""<script>
+        const el = window.parent.document.getElementById({target!r});
+        if (el) {{ el.scrollIntoView({{behavior: "smooth", block: "start"}}); }}
+        </script>""",
+        height=0,
+    )
 
 
 def classification_chart(df: pd.DataFrame, group_col: str, title: str) -> None:
@@ -587,7 +613,12 @@ def technical_metrics_expander(summary: dict, mix_sentence: str | None = None) -
 
 
 def regions_requiring_attention(region_district: pd.DataFrame, state: str) -> None:
-    """Districts grouped by EXISTING regional status - no new ranking."""
+    """Districts grouped by EXISTING regional status - no new ranking.
+
+    Every district line is clickable and drives the normal selection (and
+    thereby the URL parameters and workflow state), just like the map
+    bubbles and the example shortcuts.
+    """
     df = region_district
     if state != "All India":
         df = region_district[region_district["state"] == state]
@@ -603,7 +634,18 @@ def regions_requiring_attention(region_district: pd.DataFrame, state: str) -> No
         with col, st.container(border=True):
             st.markdown(f"{icon} **{label}** — {len(rows)} district(s)")
             for _, r in rows.head(5).iterrows():
-                st.caption(f"{r['state']} / {r['district']} ({int(r['facility_count'])} records)")
+                if st.button(
+                    f"{r['state']} / {r['district']} ({int(r['facility_count'])} records)",
+                    key=f"attn_{status}_{r['state']}_{r['district']}",
+                    type="tertiary",
+                    help="Open this district's evidence view",
+                ):
+                    st.session_state["pending_scenario"] = {
+                        "state": str(r["state"]),
+                        "district": str(r["district"]),
+                    }
+                    request_scroll("understand-evidence")
+                    st.rerun()
             if len(rows) > 5:
                 st.caption(f"… and {len(rows) - 5} more")
 
@@ -641,6 +683,7 @@ def priority_facilities_section(subset: pd.DataFrame, region_status: str) -> Non
                 if st.button("Review evidence", key=f"review_{row['unique_id']}"):
                     st.session_state["focus_facility"] = row["unique_id"]
                     st.session_state["wf_facility_reviewed"] = True
+                    request_scroll("facility-review")
                     st.rerun()
 
 
@@ -1152,6 +1195,7 @@ def main() -> None:
                             "state": ex_state,
                             "district": ex_district,
                         }
+                        request_scroll("understand-evidence")
                         st.rerun()
 
     # ---------------- Filter the facility set ----------------
@@ -1251,6 +1295,7 @@ def main() -> None:
     # action; the guarded rerun keeps the indicator and sidebar in sync.
     if map_selected_id and not st.session_state.get("wf_facility_reviewed"):
         st.session_state["wf_facility_reviewed"] = True
+        request_scroll("facility-review")
         st.rerun()
 
     # ---------------- 3 · Review priority facilities ----------------
@@ -1317,6 +1362,7 @@ def main() -> None:
             st.session_state["last_focus_applied"] = focus_id
         if st.session_state.get("facility_select") not in option_labels:
             st.session_state.pop("facility_select", None)
+        anchor("facility-review")
         choice = st.selectbox(
             "Inspect a facility",
             option_labels,
@@ -1348,6 +1394,9 @@ def main() -> None:
     # Sidebar: the task-oriented workflow on top, methodology below.
     sidebar_nav(wf_state)
     sidebar_secondary(config)
+
+    # One-shot scroll requested by a click handler (e.g. Review evidence).
+    flush_scroll()
 
 
 main()
