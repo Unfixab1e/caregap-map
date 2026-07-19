@@ -209,8 +209,9 @@ def classify(
     if evidence_score <= t.low_evidence:
         return (
             CLASS_LIKELY_GAP,
-            f"Record is well documented (completeness {completeness_score}) but shows no ICU "
-            "evidence - likely a real capability gap at this facility.",
+            f"This judgeable record (completeness {completeness_score}) contains no credible "
+            "ICU evidence. The regional layer decides whether that pattern becomes a "
+            "potential planning gap.",
         )
     return (
         CLASS_NEEDS_REVIEW,

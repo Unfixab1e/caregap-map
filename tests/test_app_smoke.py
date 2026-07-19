@@ -23,10 +23,16 @@ def test_app_renders_all_india_without_exception():
     at = AppTest.from_file(str(APP), default_timeout=120)
     at.run()
     assert not at.exception, at.exception
-    # The four-state metrics row is on screen.
+    # The four-state metrics row is on screen, with the precise display labels.
     labels = " ".join(m.label for m in at.metric)
-    for expected in ("Trusted ICU", "Likely gap", "Insufficient data", "Needs review"):
+    for expected in ("Trusted ICU evidence", "No ICU evidence", "Insufficient data", "Needs review"):
         assert expected in labels
+    # Renamed headline metrics (D19): no "coverage" wording for record shares.
+    assert "Trust-weighted ICU evidence index" in labels
+    assert "Trusted-record share" in labels
+    assert "Evidence coverage" not in labels
+    assert "Trust-weighted ICU coverage" not in labels
+    assert "Likely gap" not in labels
 
 
 @needs_data

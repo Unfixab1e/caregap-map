@@ -28,6 +28,29 @@ CLASS_NEEDS_REVIEW = "Needs Human Review"
 
 ALL_CLASSES = [CLASS_TRUSTED, CLASS_LIKELY_GAP, CLASS_INSUFFICIENT, CLASS_NEEDS_REVIEW]
 
+# User-facing display labels for the facility classes (D19). The stored
+# constants above stay stable for Parquet/tests/history compatibility, but
+# the wording shown to users must not overstate what a record proves:
+# "Likely Medical Gap" reads as a real-world claim, while the defensible
+# statement is that a judgeable record contains no credible ICU evidence.
+# "Coverage" is likewise reserved for actual geographic/population coverage,
+# which this dataset cannot measure.
+FACILITY_DISPLAY_LABELS = {
+    CLASS_TRUSTED: "Trusted ICU evidence",
+    CLASS_NEEDS_REVIEW: "Needs Human Review",
+    CLASS_LIKELY_GAP: "No ICU evidence in judgeable record",
+    CLASS_INSUFFICIENT: "Insufficient Data",
+}
+
+
+def facility_display_label(classification: str) -> str:
+    """User-facing wording for a stored facility classification.
+
+    Unknown values (e.g. region statuses routed through shared UI helpers)
+    pass through unchanged.
+    """
+    return FACILITY_DISPLAY_LABELS.get(classification, classification)
+
 # Subtype label for unqualified ICU / intensive-care claims.
 SUBTYPE_GENERAL = "general_or_unspecified"
 

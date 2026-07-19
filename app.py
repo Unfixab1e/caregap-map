@@ -34,6 +34,7 @@ from caregap_map.config import (  # noqa: E402
     REGION_TRUSTED,
     SUBTYPE_GENERAL,
     SUBTYPE_LABELS,
+    facility_display_label,
     load_env_file,
     load_scoring_config,
 )
@@ -83,14 +84,15 @@ def note_store() -> ReviewStore:
 
 def status_banner(status: str, reason: str) -> None:
     icon = CLASS_ICONS.get(status, "⚪")
+    label = facility_display_label(status)
     if status in (CLASS_TRUSTED, REGION_TRUSTED):
-        st.success(f"{icon} **{status}** - {reason}")
+        st.success(f"{icon} **{label}** - {reason}")
     elif status in (CLASS_LIKELY_GAP, REGION_PLANNING_GAP):
-        st.error(f"{icon} **{status}** - {reason}")
+        st.error(f"{icon} **{label}** - {reason}")
     elif status in (CLASS_NEEDS_REVIEW, REGION_NEEDS_REVIEW):
-        st.warning(f"{icon} **{status}** - {reason}")
+        st.warning(f"{icon} **{label}** - {reason}")
     else:  # insufficient data / data desert
-        st.info(f"⚪ **{status}** - {reason}")
+        st.info(f"⚪ **{label}** - {reason}")
 
 
 def classification_chart(df: pd.DataFrame, group_col: str, title: str) -> None:
@@ -111,14 +113,15 @@ def classification_chart(df: pd.DataFrame, group_col: str, title: str) -> None:
 
     fig = go.Figure()
     for cls in CLASS_STACK_ORDER:
+        label = facility_display_label(cls)
         fig.add_trace(
             go.Bar(
                 y=counts.index,
                 x=counts[cls],
-                name=cls,
+                name=label,
                 orientation="h",
                 marker={"color": CLASS_COLORS[cls], "line": {"color": surface, "width": 2}},
-                hovertemplate=f"%{{y}}<br>{cls}: %{{x}} facilities<extra></extra>",
+                hovertemplate=f"%{{y}}<br>{label}: %{{x}} facility records<extra></extra>",
             )
         )
     fig.update_layout(
@@ -147,9 +150,13 @@ def facility_map(subset: pd.DataFrame) -> str | None:
         st.info("No facilities with valid coordinates in this selection - use the table.")
         return None
 
-    located["status"] = located["classification"].map(lambda c: f"{CLASS_ICONS.get(c, '')} {c}")
-    order = [f"{CLASS_ICONS[c]} {c}" for c in CLASS_STACK_ORDER]
-    colors = {f"{CLASS_ICONS[c]} {c}": CLASS_COLORS[c] for c in CLASS_STACK_ORDER}
+    located["status"] = located["classification"].map(
+        lambda c: f"{CLASS_ICONS.get(c, '')} {facility_display_label(c)}"
+    )
+    order = [f"{CLASS_ICONS[c]} {facility_display_label(c)}" for c in CLASS_STACK_ORDER]
+    colors = {
+        f"{CLASS_ICONS[c]} {facility_display_label(c)}": CLASS_COLORS[c] for c in CLASS_STACK_ORDER
+    }
     fig = px.scatter_map(
         located,
         lat="lat_parsed",
@@ -194,28 +201,48 @@ def facility_map(subset: pd.DataFrame) -> str | None:
 def metrics_row(summary: dict) -> None:
     cols = st.columns(5)
     cols[0].metric("Facility records", summary["facility_count"])
-    cols[1].metric(f"{CLASS_ICONS[CLASS_TRUSTED]} Trusted ICU", summary["trusted_icu_count"])
+    cols[1].metric(
+        f"{CLASS_ICONS[CLASS_TRUSTED]} Trusted ICU evidence",
+        summary["trusted_icu_count"],
+        help="Records meeting the Trusted ICU evidence standard under the current rules.",
+    )
     cols[2].metric(f"{CLASS_ICONS[CLASS_NEEDS_REVIEW]} Needs review", summary["needs_review_count"])
-    cols[3].metric(f"{CLASS_ICONS[CLASS_LIKELY_GAP]} Likely gap", summary["likely_gap_count"])
+    cols[3].metric(
+        f"{CLASS_ICONS[CLASS_LIKELY_GAP]} No ICU evidence",
+        summary["likely_gap_count"],
+        help=(
+            "Judgeable records containing no credible ICU evidence. Many are "
+            "pharmacies, dental practices, labs or small clinics that would not "
+            "be expected to run an ICU - the regional layer, not this count, "
+            "decides whether the pattern becomes a potential planning gap."
+        ),
+    )
     cols[4].metric(f"{CLASS_ICONS[CLASS_INSUFFICIENT]} Insufficient data", summary["insufficient_data_count"])
     cols = st.columns(3)
     cols[0].metric(
         "Judgeable records",
         f"{summary['pct_sufficient_data']:.0f} %",
-        help="Share of records with enough data to be judged at all (data coverage).",
+        help=(
+            "Share of records whose fields are populated enough to evaluate what "
+            "the record claims (record judgeability). Populated fields are not "
+            "necessarily ICU-informative, and this is NOT planning readiness."
+        ),
     )
     cols[1].metric(
-        "Trust-weighted ICU coverage",
+        "Trust-weighted ICU evidence index",
         f"{summary['trust_weighted_icu_coverage']:.2f}",
         help=(
-            "0-1: mean capability evidence weighted by data completeness. "
-            "Poorly documented claims move this needle less."
+            "0-1 average capability-evidence score weighted by record "
+            "completeness. This is not population or geographic coverage."
         ),
     )
     cols[2].metric(
-        "Evidence coverage",
+        "Trusted-record share",
         f"{summary['evidence_coverage_pct']:.0f} %",
-        help="Share of records classified as Trusted ICU Coverage.",
+        help=(
+            "Share of supplied facility records classified as Trusted under the "
+            "current evidence rules - not the share of facilities with an ICU."
+        ),
     )
 
 
@@ -245,7 +272,17 @@ def notes_panel(scope_type: str, scope_id: str, context: str) -> None:
 def facility_detail(row: pd.Series) -> None:
     """Supplied record, exact evidence fragments, scores and flags."""
     st.subheader(row["name"] if pd.notna(row["name"]) else "(unnamed facility)")
-    status_banner(row["classification"], row["classification_reason"])
+    reason = row["classification_reason"]
+    if row["classification"] == CLASS_LIKELY_GAP:
+        # Display-level wording: processed data built before D19 stores the
+        # old "likely a real capability gap" sentence, which overstates what
+        # a facility record proves.
+        reason = (
+            f"This judgeable record (completeness {row['data_completeness_score']}) contains "
+            "no credible ICU evidence. The regional layer decides whether that pattern "
+            "becomes a potential planning gap."
+        )
+    status_banner(row["classification"], reason)
 
     subtypes = json.loads(row.get("icu_subtypes_json") or "[]")
     if subtypes:
@@ -358,11 +395,11 @@ def facility_detail(row: pd.Series) -> None:
 
 
 def main() -> None:
-    st.title("🏥 CareGap Map - ICU coverage trust layer")
+    st.title("🏥 CareGap Map - ICU evidence trust layer")
     st.caption(
-        "Distinguishes likely medical gaps from data deserts. All signals reflect **dataset "
-        "consistency, not verified clinical capability** - 'no reliable ICU evidence' is never "
-        "treated as 'no ICU exists'."
+        "Distinguishes records without ICU evidence from data deserts. All signals reflect "
+        "**dataset consistency, not verified clinical capability** - 'no reliable ICU evidence' "
+        "is never treated as 'no ICU exists'."
     )
 
     try:
@@ -457,10 +494,10 @@ def main() -> None:
     # ---------------- Facility table ----------------
     st.header("Facilities behind this result")
     class_filter = st.multiselect(
-        "Filter by classification",
+        "Filter by evidence status",
         CLASS_STACK_ORDER,
         default=CLASS_STACK_ORDER,
-        format_func=lambda c: f"{CLASS_ICONS[c]} {c}",
+        format_func=lambda c: f"{CLASS_ICONS[c]} {facility_display_label(c)}",
     )
     table = subset[subset["classification"].isin(class_filter)].sort_values(
         ["capability_evidence_score", "data_completeness_score"], ascending=False
@@ -477,11 +514,14 @@ def main() -> None:
                 "data_completeness_score",
                 "n_validation_flags",
             ]
-        ].rename(
+        ]
+        .assign(classification=table["classification"].map(facility_display_label))
+        .rename(
             columns={
                 "address_city": "city",
                 "district_final": "district",
                 "state_final": "state",
+                "classification": "evidence status",
                 "capability_evidence_score": "evidence 0-100",
                 "data_completeness_score": "completeness 0-100",
                 "n_validation_flags": "flags",
