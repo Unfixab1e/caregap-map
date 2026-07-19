@@ -61,14 +61,41 @@ class TestIndependentCorroboration:
         assert len(s.corroboration_categories) >= 2
 
     def test_explicit_plus_one_category_needs_review(self, config):
+        # D14 principle preserved under policy v2 (D28): WITHOUT a
+        # substantive description statement, one operational category
+        # remains one short - claim lives only in structured fields here.
+        record = make_record(
+            capability=json.dumps(["ICU"]),
+            equipment=json.dumps(["Ventilator available"]),
+        )
+        s = score_facility(record, config)
+        assert s.capability_evidence_score >= config.thresholds.high_evidence
+        assert s.description_corroboration is False
+        assert s.classification == CLASS_NEEDS_REVIEW
+
+    def test_substantive_description_plus_one_category_is_trusted_v2(self, config):
+        # WITH a substantive description statement echoed by a structured
+        # claim, the record promotes under evidence policy v2 (variant B):
+        # description corroboration + equipment.
+        record = make_record(
+            description="The hospital has an ICU.",
+            capability=json.dumps(["ICU"]),
+            equipment=json.dumps(["Ventilator available"]),
+        )
+        s = score_facility(record, config)
+        assert s.description_corroboration is True
+        assert s.classification == CLASS_TRUSTED
+        assert "policy v2" in s.classification_reason
+
+    def test_description_only_claim_stays_review_under_v2b(self, config):
+        # Substantive prose without any structured-field echo stays review -
+        # the narrowest audited rule (D28) requires both.
         record = make_record(
             description="The hospital has an ICU.",
             equipment=json.dumps(["Ventilator available"]),
         )
         s = score_facility(record, config)
-        # explicit(35) + equipment(20) = 55 >= high threshold, but only ONE
-        # independent corroboration category -> review, not trust.
-        assert s.capability_evidence_score >= config.thresholds.high_evidence
+        assert s.description_corroboration is False
         assert s.classification == CLASS_NEEDS_REVIEW
 
     def test_min_categories_is_configurable(self):

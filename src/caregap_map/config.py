@@ -243,6 +243,44 @@ class EvidenceKeywords(BaseModel):
         ],
     }
 
+    # Substantive-description heuristics (evidence policy v2, D28). A
+    # description-level explicit ICU claim counts as corroboration only when
+    # the fragment reads like a substantive service statement - one of these
+    # pattern groups must match IN ADDITION to the explicit claim. Bare
+    # labels ("ICU available", "ICU / NICU") never qualify.
+    description_service_verbs: list[str] = [
+        r"\b(offer|offers|offered|offering)\b",
+        r"\b(provide|provides|provided|providing)\b",
+        r"\b(operate|operates|operating)\b",
+        r"\b(has|have|having)\b",
+        r"\b(include|includes|including)\b",
+        r"\b(maintain|maintains|maintaining)\b",
+        r"\bequipped\s+with\b",
+        r"\b(support|supports|supporting)\b",
+        r"\b(feature|features|featuring)\b",
+        r"\b(run|runs|running)\b",
+        r"\b(house|houses|housing)\b",
+    ]
+    description_unit_statements: list[str] = [
+        r"\bintensive\s+care\s+unit\b",
+        r"\bcritical\s+care\s+(unit|department|centre|center)\b",
+        r"\bicu\s+(unit|department|ward|wing)\b",
+        r"\bdedicated\s+(icu|nicu|picu|intensive\s+care)\b",
+    ]
+    description_operational_details: list[str] = [
+        r"\bventilators?\b",
+        r"\bmechanical\s+ventilation\b",
+        r"\bventilator\s+support\b",
+        r"\b\d{1,4}\s*[- ]?bed",
+        r"\bicu\s+beds?\b",
+        r"\bintensivists?\b",
+        r"\bcritical\s+care\s+(staff|nurs\w*|team|physician)\b",
+        r"\bcontinuous\s+monitoring\b",
+        r"\blife\s+support\b",
+        r"\bresuscitation\b",
+        r"\bintubation\b",
+    ]
+
     # Patterns that extract an ICU bed count (first capture group = count).
     # Each pattern requires the number, a bed word and ICU/intensive-care
     # context TOGETHER in one passage - that adjacency is the anchoring rule.
@@ -343,6 +381,11 @@ class LlmConfig(BaseModel):
 class ScoringConfig(BaseModel):
     """Bundle of everything the scoring pipeline needs."""
 
+    # Evidence policy v2 (D28): substantive description corroboration plus
+    # one operational category can satisfy the Trusted corroboration
+    # requirement. The version string is displayed to users and changes the
+    # scoring-config fingerprint, so old saved scenarios warn on reopen.
+    trust_policy_version: str = "v2"
     keywords: EvidenceKeywords = Field(default_factory=EvidenceKeywords)
     evidence_weights: EvidenceWeights = Field(default_factory=EvidenceWeights)
     completeness_weights: CompletenessWeights = Field(default_factory=CompletenessWeights)

@@ -52,6 +52,8 @@ class FacilityScore(BaseModel):
     evidence_components: dict[str, int] = Field(default_factory=dict)
     completeness_components: dict[str, int] = Field(default_factory=dict)
     corroboration_categories: list[str] = Field(default_factory=list)
+    # Evidence policy v2 (D28): a substantive description-level ICU claim.
+    description_corroboration: bool = False
 
     @property
     def contradiction_flags(self) -> list[str]:
@@ -122,6 +124,74 @@ def compute_completeness_score(
     return score, components
 
 
+def is_substantive_icu_text(text: str, config: ScoringConfig) -> bool:
+    """Is this description text a substantive ICU statement (policy v2)?
+
+    Substantive means the fragment reads like a service statement rather
+    than a bare label: at least five words AND a service verb, an ICU
+    unit/department statement, or a concrete operational detail. Text that
+    looks like directory/partner content never qualifies. This is a
+    semantic gate, never a character count alone.
+    """
+    if len(text.split()) < 5:
+        return False
+    kw = config.keywords
+    if any(re.search(p, text, re.IGNORECASE) for p in kw.cross_organization):
+        return False
+    for group in (
+        kw.description_service_verbs,
+        kw.description_unit_statements,
+        kw.description_operational_details,
+    ):
+        if any(re.search(p, text, re.IGNORECASE) for p in group):
+            return True
+    return False
+
+
+def find_substantive_description_claim(
+    evidence: EvidenceResult, config: ScoringConfig
+) -> str | None:
+    """The exact substantive description fragment carrying the ICU claim.
+
+    Returns the fragment text when the record has an explicit ICU claim
+    whose verified fragment (a) comes from the ``description`` field and
+    (b) passes :func:`is_substantive_icu_text`; otherwise ``None``. This is
+    the description-corroboration signal of evidence policy v2 (D28) -
+    still evidence INSIDE the supplied record, never an independent
+    external source, and never sufficient for Trusted on its own.
+    """
+    if not evidence.explicit_icu_claim:
+        return None
+    for fragment in evidence.supporting_text_fragments:
+        if fragment.group != "explicit_icu" or fragment.field != "description":
+            continue
+        if is_substantive_icu_text(fragment.text, config):
+            return fragment.text
+    return None
+
+
+def description_corroboration_signal(evidence: EvidenceResult, config: ScoringConfig) -> str | None:
+    """The policy-v2 (variant B) description-corroboration signal.
+
+    Requires BOTH a substantive description-level claim (see
+    :func:`find_substantive_description_claim`) and the explicit ICU claim
+    appearing in at least one separate structured field - chosen as the
+    narrowest audited rule (D28): it promoted 72 of the 705 boundary
+    records, all hospital-like or unknown by audit category, and excluded
+    the directory-flavoured description-only stragglers. This is asserted
+    redundancy within ONE generated record, never independent external
+    verification.
+    """
+    fragment = find_substantive_description_claim(evidence, config)
+    if fragment is None:
+        return None
+    in_structured_field = any(
+        f.group == "explicit_icu" and f.field != "description"
+        for f in evidence.supporting_text_fragments
+    )
+    return fragment if in_structured_field else None
+
+
 def count_corroboration_categories(evidence: EvidenceResult, config: ScoringConfig) -> tuple[int, list[str]]:
     """Count DISTINCT evidence categories behind an ICU claim.
 
@@ -165,12 +235,18 @@ def classify(
     config: ScoringConfig,
     explicit_claim: bool = False,
     corroboration_categories: int = 0,
+    description_corroboration: bool = False,
 ) -> tuple[str, str]:
     """Map the two scores plus validator outcomes to one of the four classes.
 
     Order of precedence (documented in DECISIONS.md):
     contradictions first, then judgeability, then evidence strength gated by
-    independent corroboration (D14).
+    independent corroboration (D14). Under evidence policy v2 (D28), a
+    substantive description-level ICU statement plus ONE operational
+    category also satisfies the corroboration requirement - description
+    corroboration alone never does, and the contradiction/suspicious gates
+    (which include directory/partner content) fire before it is considered.
+    Calling with ``description_corroboration=False`` reproduces policy v1.
     """
     t = config.thresholds
     if has_contradiction:
@@ -193,12 +269,24 @@ def classify(
                 "ICU-adjacent signals without an explicit intensive-care claim; verify on site.",
             )
         if corroboration_categories < t.min_corroboration_categories:
+            if description_corroboration and corroboration_categories >= 1:
+                return (
+                    CLASS_TRUSTED,
+                    f"Evidence score {evidence_score} meets the trust threshold "
+                    f"({t.high_evidence}); corroboration accepted under evidence policy v2: "
+                    "a substantive description statement plus "
+                    f"{corroboration_categories} operational evidence "
+                    f"categor{'y' if corroboration_categories == 1 else 'ies'} in the "
+                    "supplied record.",
+                )
             return (
                 CLASS_NEEDS_REVIEW,
-                f"Explicit claim backed by only {corroboration_categories} distinct evidence "
+                "Strong ICU evidence - additional corroboration required. Explicit claim "
+                f"backed by only {corroboration_categories} distinct evidence "
                 f"categor{'y' if corroboration_categories == 1 else 'ies'} in the supplied "
-                f"record ({t.min_corroboration_categories} required for trust); a single "
-                "phrase must not corroborate itself.",
+                f"record ({t.min_corroboration_categories} required, or a substantive "
+                "description statement plus one); a single phrase must not corroborate "
+                "itself.",
             )
         return (
             CLASS_TRUSTED,
@@ -242,6 +330,7 @@ def score_facility(
     evidence_score, ev_components = compute_evidence_score(evidence, config)
     completeness_score, comp_components = compute_completeness_score(record, config)
     n_corroboration, corroboration = count_corroboration_categories(evidence, config)
+    substantive_fragment = description_corroboration_signal(evidence, config)
     classification, reason = classify(
         evidence_score,
         completeness_score,
@@ -250,6 +339,7 @@ def score_facility(
         config=config,
         explicit_claim=evidence.explicit_icu_claim,
         corroboration_categories=n_corroboration,
+        description_corroboration=substantive_fragment is not None,
     )
     return FacilityScore(
         capability_evidence_score=evidence_score,
@@ -261,6 +351,7 @@ def score_facility(
         evidence_components=ev_components,
         completeness_components=comp_components,
         corroboration_categories=corroboration,
+        description_corroboration=substantive_fragment is not None,
     )
 
 
@@ -298,6 +389,7 @@ def score_dataframe(df: pd.DataFrame, config: ScoringConfig | None = None) -> pd
                 "icu_subtypes_json": json.dumps(s.evidence.icu_subtypes),
                 "n_corroboration_categories": len(s.corroboration_categories),
                 "corroboration_categories_json": json.dumps(s.corroboration_categories),
+                "description_corroboration": s.description_corroboration,
                 "n_contradiction_flags": len(s.contradiction_flags),
                 "n_validation_flags": len(s.validation_flags),
                 "evidence_fragments_json": json.dumps(
