@@ -66,7 +66,7 @@ Legend: ✅ code-complete **and** locally tested · 🟡 code-complete, **not li
   shared payload_to_evidence guardrails; deterministic scoring reused; checkpoints,
   retry→split→quarantine, atomic writes; 31 stub-backed tests
 - ✅ Real 24-record Luna pilot: 23 ok / 1 quarantined (the corrupted column-shifted
-  record - guardrails, not model weakness), 87% agreement with the OpenAI extractor,
+  record - guardrails, not model weakness), 87% extractor agreement (diagnostic, not accuracy) with the OpenAI extractor,
   74% with deterministic, ~26 s/record; Terra escalation judged unnecessary
 - ⬜ 100- and 500-record stability runs, then decide on the full 10,077 sweep
   (~404+ executions; NOT executed)

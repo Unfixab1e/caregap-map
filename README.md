@@ -252,10 +252,26 @@ pass `--yes`, reports live spend per record, and gpt-4o-mini keeps even a full 1
 run in the low single-digit dollars. Prices used for the estimate are configurable in
 `LlmConfig`.
 
-## Evaluation against human labels
+## Evaluation status
 
-Extractor agreement is diagnostic, not accuracy. `evals/` holds a labelled-review
-workflow (template committed; real excerpts stay git-ignored) — current status in
+- ✅ Deterministic regression tests
+- ✅ Exact-fragment verification
+- ✅ Validator and contradiction tests
+- ✅ OpenAI–deterministic comparison
+- ✅ Codex–OpenAI–deterministic disagreement analysis
+- ✅ Bounded MLflow traced evaluation
+- ⬜ Structured human-labelled accuracy benchmark
+
+Human-labelled calibration remains **future work**; no clinical accuracy
+claim is made. The pipeline is designed for human review and future
+calibration — structured labelling will not complete before submission
+and release does not block on it. Model agreement is diagnostic, not
+accuracy.
+
+### Human-review workflow (designed for future calibration)
+
+Extractor agreement is diagnostic, not accuracy. `evals/` holds the labelled-review
+workflow (template committed; real excerpts stay git-ignored) — details in
 [evals/EVALUATION_STATUS.md](evals/EVALUATION_STATUS.md):
 
 ```bash
@@ -298,10 +314,12 @@ written to the Delta table before the restart was still present after it. See
 - LLM extraction errs toward *missing* evidence (exact-quote discipline) — the safe
   direction, but a recall limitation.
 - NFHS indicators are cleaned but not yet joined at district level.
-- The expanded human-labelled evaluation sample (65 rows) exists but local labels are
-  pending (Nayun's 18-case review file is stored privately off-repo); no threshold
-  change is currently ground-truth-validated, which is why D21 clarifies wording
-  instead of reclassifying.
+- The structured human-labelled accuracy benchmark is **explicitly incomplete** and
+  will not complete before submission: the 65-row sample is generated but unlabelled
+  locally, and Nayun's 18-case review file is stored privately off-repo. No threshold
+  change is ground-truth-validated (which is why D21 clarifies wording instead of
+  reclassifying); human-labelled calibration remains future work and no clinical
+  accuracy claim is made.
 - 64 of 103 trusted-evidence districts hinge on a single trusted record; 88 districts
   are dominated by non-hospital records.
 

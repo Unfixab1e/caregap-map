@@ -43,6 +43,13 @@ and planning logic built on top of it.**
 - [ ] Delta tables: `workspace.caregap.review_notes`,
       `workspace.caregap.planning_scenarios` (parameterized SQL only)
 - [ ] CI green without any credentials or challenge data
+- [ ] Evaluation honesty lines:
+      “The challenge provides no ground-truth answer key, so we do not claim
+      clinical accuracy. We evaluate the trust pipeline through deterministic
+      validators, exact-fragment verification, adversarial audit samples and
+      disagreement analysis across independent extractors.”
+      “Model agreement is diagnostic, not accuracy. We intentionally traced
+      difficult disagreement cases to expose where a human reviewer is needed.”
 
 ## Dataset & licensing statement
 
@@ -56,12 +63,32 @@ model-generated claims; the app says so and never certifies real-world
 clinical availability. Secrets are never committed; the deployed app uses
 the Databricks-injected service-principal OAuth, not tokens.
 
+## Evaluation status
+
+- ✅ Deterministic regression tests
+- ✅ Exact-fragment verification
+- ✅ Validator and contradiction tests
+- ✅ OpenAI–deterministic comparison
+- ✅ Codex–OpenAI–deterministic disagreement analysis
+- ✅ Bounded MLflow traced evaluation
+- ⬜ Structured human-labelled accuracy benchmark
+
+Human-labelled calibration remains **future work**; no clinical accuracy
+claim is made. The pipeline is designed for human review and future
+calibration — structured labelling will not complete before submission
+and release does not block on it. Model agreement is diagnostic, not
+accuracy.
+
 ## Known limitations (details in README)
 
 - Signals are dataset consistency, not verified clinical capability.
 - "Judgeable" = populated fields; most gap-bucket records are
   non-hospital organizations (published audit).
-- Human labels pending locally: no threshold change is ground-truth
-  validated yet; model-to-model agreement is diagnostic only.
+- The structured human-labelled accuracy benchmark is incomplete and will
+  not complete before submission; human-labelled calibration remains
+  future work, no threshold change is ground-truth validated, and no
+  clinical accuracy claim is made. Extractor-agreement numbers are
+  diagnostic and come from small or deliberately disagreement-heavy
+  samples.
 - 64 of 103 trusted-evidence districts hinge on a single record.
 - NFHS is cleaned but not joined; choropleth geometry out of scope.

@@ -51,6 +51,16 @@ situations."*
    > "**The model may propose evidence, but only source-verifiable evidence affects
    > the score.** That's the trust layer."
 
+## If asked about evaluation (say exactly this)
+
+> “The challenge provides no ground-truth answer key, so we do not claim
+> clinical accuracy. We evaluate the trust pipeline through deterministic
+> validators, exact-fragment verification, adversarial audit samples and
+> disagreement analysis across independent extractors.”
+
+> “Model agreement is diagnostic, not accuracy. We intentionally traced
+> difficult disagreement cases to expose where a human reviewer is needed.”
+
 ## Honesty guardrails (never say)
 
 - "99 % of Indian facilities are fully documented" (99 % is *record judgeability* —

@@ -281,7 +281,11 @@ def aggregate_results(rows: list[dict], errors: int, quarantined: int) -> dict:
         and r["human_classification"] != CLASS_LIKELY_GAP
     )
     return {
-        "note": "Model-to-model agreement is DIAGNOSTIC, not accuracy.",
+        "note": (
+            "Extractor agreement is DIAGNOSTIC, not accuracy - measured on a "
+            "deliberately disagreement-heavy sample, not representative "
+            "population performance. No clinical accuracy claim is made."
+        ),
         "records_processed": len(rows) + errors,
         "records_succeeded": len(rows),
         "extraction_errors": errors,

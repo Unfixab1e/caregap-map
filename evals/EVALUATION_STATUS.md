@@ -3,11 +3,27 @@
 Aggregate metrics only — record identifiers and source excerpts stay in
 git-ignored files (`evals/private/`, `reports/`).
 
+## Evaluation status
+
+- ✅ Deterministic regression tests
+- ✅ Exact-fragment verification
+- ✅ Validator and contradiction tests
+- ✅ OpenAI–deterministic comparison
+- ✅ Codex–OpenAI–deterministic disagreement analysis
+- ✅ Bounded MLflow traced evaluation
+- ⬜ Structured human-labelled accuracy benchmark
+
+Human-labelled calibration remains **future work**; no clinical accuracy
+claim is made. The pipeline is designed for human review and future
+calibration — structured labelling will not complete before submission
+and release does not block on it. Model agreement is diagnostic, not
+accuracy.
+
 ## Where evaluation stands (2026-07-19)
 
 | item | status |
 |---|---|
-| Nayun's manual ICU review | 18 cases labelled (see `NAYUN_REVIEW_SUMMARY.md`); the full labelled file is stored privately off-repo and is **not on this machine** |
+| Nayun's manual ICU review | 18 cases labelled (see `NAYUN_REVIEW_SUMMARY.md`); the full labelled file is stored privately off-repo and is **not on this machine**. Structured labelling **will not complete before submission** |
 | Stratified review sample (`evals/private/icu_review.csv`) | 65 rows generated, **0 labelled locally** |
 | `scripts/evaluate_labels.py` | runs green; reports "pending" until labels are filled |
 | Deterministic-vs-human agreement | **not yet measurable locally** (no labels present) |
@@ -36,15 +52,22 @@ bucket, plus up-to-3 records per specialised subtype (NICU/PICU/ICCU/
 MICU/SICU) and every deterministic-vs-LLM disagreement. Existing rows and
 any labels are never overwritten (the generator is merge-preserving).
 
-## Diagnostic (NOT accuracy) model-to-model numbers
+## Diagnostic (NOT accuracy) extractor-agreement numbers
 
-Model-to-model agreement says nothing about correctness; it only flags
-records worth a human look:
+These are **extractor agreement** figures: model-to-model agreement says
+nothing about correctness, is **not accuracy**, and is **not
+representative population performance** — the samples are small and
+deliberately stratified/disagreement-seeking; they only flag records
+worth a human look:
 
-- OpenAI extractor vs deterministic: 75.0 % classification agreement on
-  the 24-record stratified comparison (0 API errors).
+- OpenAI extractor vs deterministic: 75.0 % extractor agreement on the
+  24-record stratified pilot (0 API errors).
 - Codex (gpt-5.6-luna) pilot vs OpenAI extractor: 87 %; vs
   deterministic: 74 % (24-record pilot).
+- MLflow traced evaluation (34 records, **deliberately
+  disagreement-heavy** — every stored disagreement is included by
+  design): OpenAI 52.9 %, Codex 64.7 % extractor agreement. Lower than
+  the pilot numbers purely because of that adversarial sampling.
 
 Every disagreement is auto-included in the review sample.
 

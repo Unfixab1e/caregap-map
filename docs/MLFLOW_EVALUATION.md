@@ -41,7 +41,9 @@ human labels, confusion matrices (artifact `evaluation_summary.json`),
 latency, token usage and cost (zero — the traced pipeline is
 deterministic; model outputs are compared from earlier recorded runs).
 
-**Model-to-model agreement is diagnostic, never accuracy.** Human-label
+**Model-to-model agreement is extractor agreement — diagnostic, never
+accuracy, and measured on a deliberately disagreement-heavy sample, so it
+is not representative population performance.** Human-label
 metrics appear only when labelled rows exist; the run does not claim
 judge alignment otherwise.
 
