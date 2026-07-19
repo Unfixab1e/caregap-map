@@ -28,6 +28,11 @@ databricks = [
     "databricks-sql-connector>=3.0",
     "databricks-sdk>=0.20",
 ]
+# Offline MLflow 3 evaluation/tracing (docs/MLFLOW_EVALUATION.md).
+# Strictly optional: app, tests and pipeline run without it.
+mlflow = [
+    "mlflow>=3.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
