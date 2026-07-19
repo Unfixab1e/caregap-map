@@ -1,10 +1,23 @@
-"""Build the human-review evaluation sample (evals/private/icu_review.csv).
+"""Build/extend the human-review evaluation sample (evals/private/icu_review.csv).
 
-Stratified: 15 Trusted / 10 Needs Review / 10 Likely Gap / 5 Insufficient,
-plus all deterministic-vs-LLM disagreements and specialised-subtype records.
-The output is GIT-IGNORED (real IDs + source excerpts). Usage:
+Stratified across:
 
-    python scripts/build_eval_sample.py [--data-dir data]
+- the four classifications (15 Trusted / 10 Needs Review / 10 Likely Gap /
+  5 Insufficient);
+- every deterministic-vs-LLM disagreement (and, with --codex-parquet,
+  every deterministic-vs-Codex disagreement from a STABLE snapshot);
+- specialised ICU subtypes (up to 3 records per subtype);
+- audit categories among the gap bucket (up to 5 each: hospital-like,
+  clinic/health centre, pharmacy, dentist, individual doctor,
+  diagnostics/lab) so non-hospital "no ICU evidence" semantics get
+  human labels.
+
+MERGE-PRESERVING: if the output file already exists, all its rows -
+including any human labels - are kept untouched and only new unique_ids
+are appended. The output is GIT-IGNORED (real IDs + source excerpts).
+
+    python scripts/build_eval_sample.py [--data-dir data] [--out evals/private/icu_review.csv]
+                                        [--codex-parquet <stable snapshot>]
 """
 
 from __future__ import annotations
@@ -20,6 +33,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from caregap_map.audit import CAT_UNKNOWN, categorize_for_audit  # noqa: E402
 from caregap_map.config import (  # noqa: E402
     CLASS_INSUFFICIENT,
     CLASS_LIKELY_GAP,
@@ -30,7 +44,10 @@ from caregap_map.config import (  # noqa: E402
 from caregap_map.evaluation import REQUIRED_COLUMNS  # noqa: E402
 
 STRATA = {CLASS_TRUSTED: 15, CLASS_NEEDS_REVIEW: 10, CLASS_LIKELY_GAP: 10, CLASS_INSUFFICIENT: 5}
-N_SUBTYPE_EXTRA = 6  # specialised-subtype records added for diversity
+N_PER_SUBTYPE = 3
+N_PER_AUDIT_CATEGORY = 5  # among the gap bucket, per non-"unknown" category
+
+SUBTYPES = ["neonatal_icu", "pediatric_icu", "cardiac_icu", "medical_icu", "surgical_icu"]
 
 
 def excerpt(row: pd.Series) -> str:
@@ -42,9 +59,83 @@ def excerpt(row: pd.Series) -> str:
     return " | ".join(t[:160] for t in texts)
 
 
+def build_sample(
+    scored: pd.DataFrame,
+    llm_by_id: dict[str, str],
+    codex_by_id: dict[str, str],
+) -> pd.DataFrame:
+    """Deterministically select the stratified review candidates."""
+    picked: list[pd.DataFrame] = []
+    for cls, n in STRATA.items():
+        picked.append(scored[scored["classification"] == cls].sort_values("unique_id").head(n))
+
+    # Every det-vs-model disagreement (LLM always; Codex from a stable snapshot).
+    for by_id in (llm_by_id, codex_by_id):
+        ids = [uid for uid, cls in by_id.items() if isinstance(cls, str) and cls]
+        dis = scored[scored["unique_id"].isin(ids)]
+        dis = dis[dis["classification"] != dis["unique_id"].map(by_id)]
+        picked.append(dis)
+
+    # Specialised-subtype diversity: up to N per subtype.
+    subtype_lists = scored["icu_subtypes_json"].fillna("[]").map(json.loads)
+    for subtype in SUBTYPES:
+        mask = subtype_lists.map(lambda subs, s=subtype: s in subs)
+        picked.append(scored[mask].sort_values("unique_id").head(N_PER_SUBTYPE))
+
+    # Audit-category diversity among the gap bucket, so non-hospital
+    # absence semantics (pharmacy/dentist/lab/clinic) get human labels.
+    gaps = scored[scored["classification"] == CLASS_LIKELY_GAP]
+    categories = gaps.apply(
+        lambda r: categorize_for_audit(r.get("name"), r.get("organization_type")), axis=1
+    )
+    for category in sorted(categories.unique()):
+        if category == CAT_UNKNOWN:
+            continue
+        picked.append(
+            gaps[categories == category].sort_values("unique_id").head(N_PER_AUDIT_CATEGORY)
+        )
+
+    sample = pd.concat(picked).drop_duplicates("unique_id")
+    out = pd.DataFrame(
+        {
+            "unique_id": sample["unique_id"],
+            "name": sample["name"],
+            "audit_category": sample.apply(
+                lambda r: categorize_for_audit(r.get("name"), r.get("organization_type")), axis=1
+            ),
+            "current_classification": sample["classification"],
+            "llm_classification": sample["unique_id"].map(llm_by_id).fillna(""),
+            "codex_classification": sample["unique_id"].map(codex_by_id).fillna(""),
+            "extractor_subtypes": sample["icu_subtypes_json"].fillna("[]"),
+            "evidence_excerpt": sample.apply(excerpt, axis=1),
+        }
+    )
+    for col in REQUIRED_COLUMNS:
+        if col not in out.columns:
+            out[col] = ""
+    return out
+
+
+def merge_preserving(existing: pd.DataFrame, new: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """Keep every existing row (labels included); append only new unique_ids."""
+    existing = existing.copy()
+    for col in new.columns:
+        if col not in existing.columns:
+            existing[col] = ""
+    additions = new[~new["unique_id"].isin(existing["unique_id"])]
+    return pd.concat([existing, additions], ignore_index=True), len(additions)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--out", default="evals/private/icu_review.csv")
+    parser.add_argument(
+        "--codex-parquet",
+        default=None,
+        help="STABLE snapshot of Codex-scored facilities (never point this at a running "
+        "batch-extraction output directory).",
+    )
     args = parser.parse_args()
 
     paths = DataPaths(data_dir=Path(args.data_dir))
@@ -53,50 +144,41 @@ def main() -> int:
         return 1
     scored = pd.read_parquet(paths.facilities_scored_parquet)
 
-    llm_by_id: dict[str, str] = {}
-    llm_path = paths.processed_dir / "facilities_scored_llm.parquet"
-    if llm_path.exists():
-        llm = pd.read_parquet(llm_path)
-        llm_by_id = dict(zip(llm["unique_id"], llm.get("llm_classification", ""), strict=True))
+    def classification_map(path: Path, column: str) -> dict[str, str]:
+        if not path.exists():
+            return {}
+        df = pd.read_parquet(path)
+        if column not in df.columns:
+            return {}
+        return dict(zip(df["unique_id"], df[column].fillna(""), strict=True))
 
-    picked: list[pd.DataFrame] = []
-    for cls, n in STRATA.items():
-        picked.append(scored[scored["classification"] == cls].sort_values("unique_id").head(n))
-    # Every det-vs-LLM disagreement.
-    disagree_ids = [uid for uid, llm_cls in llm_by_id.items() if isinstance(llm_cls, str) and llm_cls]
-    dis = scored[scored["unique_id"].isin(disagree_ids)]
-    dis = dis[dis["classification"] != dis["unique_id"].map(llm_by_id)]
-    picked.append(dis)
-    # Specialised-subtype diversity (records whose subtypes exclude general).
-    subtyped = scored[
-        scored["icu_subtypes_json"]
-        .fillna("[]")
-        .apply(lambda s: bool(json.loads(s)) and "general_or_unspecified" not in json.loads(s))
-    ]
-    picked.append(subtyped.sort_values("unique_id").head(N_SUBTYPE_EXTRA))
-
-    sample = pd.concat(picked).drop_duplicates("unique_id")
-
-    out = pd.DataFrame(
-        {
-            "unique_id": sample["unique_id"],
-            "name": sample["name"],
-            "current_classification": sample["classification"],
-            "llm_classification": sample["unique_id"].map(llm_by_id).fillna(""),
-            "extractor_subtypes": sample["icu_subtypes_json"].fillna("[]"),
-            "evidence_excerpt": sample.apply(excerpt, axis=1),
-        }
+    llm_by_id = classification_map(
+        paths.processed_dir / "facilities_scored_llm.parquet", "llm_classification"
     )
-    for col in REQUIRED_COLUMNS:
-        if col not in out.columns:
-            out[col] = ""
+    codex_by_id = (
+        classification_map(Path(args.codex_parquet), "codex_classification")
+        if args.codex_parquet
+        else {}
+    )
 
-    dest = Path("evals/private/icu_review.csv")
+    new = build_sample(scored, llm_by_id, codex_by_id)
+
+    dest = Path(args.out)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(dest, index=False)
-    print(f"Wrote {len(out)} rows to {dest} (git-ignored).")
+    appended = len(new)
+    if dest.exists():
+        existing = pd.read_csv(dest, dtype=str).fillna("")
+        merged, appended = merge_preserving(existing, new)
+    else:
+        merged = new
+    merged.to_csv(dest, index=False)
+
+    print(f"Wrote {len(merged)} rows to {dest} (git-ignored); {appended} newly appended.")
     print("Class distribution:")
-    print(out["current_classification"].value_counts().to_string())
+    print(merged["current_classification"].value_counts().to_string())
+    if "audit_category" in merged.columns:
+        print("\nAudit-category distribution:")
+        print(merged["audit_category"].replace("", "(pre-existing row)").value_counts().to_string())
     print("\nNext: fill the human_* columns, then run scripts/evaluate_labels.py")
     return 0
 

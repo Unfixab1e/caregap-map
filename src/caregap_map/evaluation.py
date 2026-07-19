@@ -80,20 +80,47 @@ def evaluate_labels(df: pd.DataFrame) -> dict:
         "false_gap": int(((det == CLASS_LIKELY_GAP) & (human != CLASS_LIKELY_GAP)).sum()),
     }
 
-    has_llm = labelled["llm_classification"].notna() & (
-        labelled["llm_classification"].astype(str).str.strip() != ""
-    )
-    llm_rows = labelled[has_llm]
-    if len(llm_rows):
-        llm = llm_rows["llm_classification"].astype(str).str.strip()
-        llm_human = llm_rows["human_expected_classification"].astype(str).str.strip()
-        report["llm_assisted"] = {
-            "rows": len(llm_rows),
-            "agreement_pct": round(100.0 * (llm == llm_human).mean(), 1),
-            "confusion_matrix_human_rows": _confusion(llm_human, llm),
-            "false_trusted": int(((llm == CLASS_TRUSTED) & (llm_human != CLASS_TRUSTED)).sum()),
-            "false_gap": int(((llm == CLASS_LIKELY_GAP) & (llm_human != CLASS_LIKELY_GAP)).sum()),
+    # Model-assisted extractors, when their classifications are present.
+    # Agreement with humans is the metric; model-to-model agreement is
+    # diagnostic only and never reported as accuracy.
+    for column, key in (("llm_classification", "llm_assisted"), ("codex_classification", "codex_assisted")):
+        if column not in labelled.columns:
+            continue
+        has_model = labelled[column].notna() & (labelled[column].astype(str).str.strip() != "")
+        model_rows = labelled[has_model]
+        if not len(model_rows):
+            continue
+        model = model_rows[column].astype(str).str.strip()
+        model_human = model_rows["human_expected_classification"].astype(str).str.strip()
+        report[key] = {
+            "rows": len(model_rows),
+            "agreement_pct": round(100.0 * (model == model_human).mean(), 1),
+            "confusion_matrix_human_rows": _confusion(model_human, model),
+            "false_trusted": int(((model == CLASS_TRUSTED) & (model_human != CLASS_TRUSTED)).sum()),
+            "false_gap": int(
+                ((model == CLASS_LIKELY_GAP) & (model_human != CLASS_LIKELY_GAP)).sum()
+            ),
         }
+
+    # Non-hospital classification errors: when the sample records the audit
+    # category (see scripts/build_eval_sample.py), report deterministic
+    # disagreements per category so pharmacy/dentist/lab errors are visible.
+    if "audit_category" in labelled.columns:
+        cats = labelled["audit_category"].fillna("").astype(str).str.strip()
+        with_cat = labelled[cats != ""]
+        if len(with_cat):
+            per_cat: dict = {}
+            for category, group in with_cat.groupby(cats[cats != ""]):
+                g_human = group["human_expected_classification"].astype(str).str.strip()
+                g_det = group["current_classification"].astype(str).str.strip()
+                per_cat[category] = {
+                    "rows": len(group),
+                    "deterministic_agreement_pct": round(100.0 * (g_det == g_human).mean(), 1),
+                    "false_gap": int(
+                        ((g_det == CLASS_LIKELY_GAP) & (g_human != CLASS_LIKELY_GAP)).sum()
+                    ),
+                }
+            report["by_audit_category"] = per_cat
 
     # Subtype-specific errors: reviewer recorded a subtype differing from the
     # extractor's (free-text comparison, case-insensitive).

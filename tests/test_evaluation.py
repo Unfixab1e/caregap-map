@@ -91,3 +91,37 @@ class TestEvaluateLabels:
         report = evaluate_labels(df)
         d = report["disagreements_requiring_review"][0]
         assert d["unique_id"] == "a" and d["rationale"] == "r"
+
+    def test_codex_assisted_agreement_reported_when_present(self):
+        rows = [
+            row("a", CLASS_TRUSTED, "", CLASS_TRUSTED),
+            row("b", CLASS_LIKELY_GAP, "", CLASS_INSUFFICIENT),
+        ]
+        rows[0]["codex_classification"] = CLASS_TRUSTED
+        rows[1]["codex_classification"] = CLASS_LIKELY_GAP  # false gap vs human
+        report = evaluate_labels(pd.DataFrame(rows))
+        codex = report["codex_assisted"]
+        assert codex["rows"] == 2
+        assert codex["agreement_pct"] == 50.0
+        assert codex["false_gap"] == 1
+        assert codex["false_trusted"] == 0
+
+    def test_codex_absent_column_is_fine(self):
+        report = evaluate_labels(pd.DataFrame([row("a", CLASS_TRUSTED, "", CLASS_TRUSTED)]))
+        assert "codex_assisted" not in report
+
+    def test_by_audit_category_error_breakdown(self):
+        rows = [
+            row("a", CLASS_LIKELY_GAP, "", CLASS_INSUFFICIENT),  # false gap on a dentist
+            row("b", CLASS_LIKELY_GAP, "", CLASS_LIKELY_GAP),
+            row("c", CLASS_TRUSTED, "", CLASS_TRUSTED),
+        ]
+        rows[0]["audit_category"] = "dentist"
+        rows[1]["audit_category"] = "dentist"
+        rows[2]["audit_category"] = "hospital_like"
+        report = evaluate_labels(pd.DataFrame(rows))
+        by_cat = report["by_audit_category"]
+        assert by_cat["dentist"]["rows"] == 2
+        assert by_cat["dentist"]["false_gap"] == 1
+        assert by_cat["dentist"]["deterministic_agreement_pct"] == 50.0
+        assert by_cat["hospital_like"]["false_gap"] == 0
