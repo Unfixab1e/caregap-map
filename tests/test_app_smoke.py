@@ -48,6 +48,67 @@ def test_state_selection_updates_summary():
 
 
 @needs_data
+def test_query_params_restore_region_after_refresh():
+    """Fix A: ?state=...&district=... survives a fresh session (page refresh)."""
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.query_params["state"] = "Kerala"
+    at.run()
+    assert not at.exception, at.exception
+    assert next(sb for sb in at.selectbox if sb.label == "State").value == "Kerala"
+
+    # And with a district: pick a real one from the first session.
+    district = next(sb for sb in at.selectbox if sb.label == "District (optional)").options[1]
+    at2 = AppTest.from_file(str(APP), default_timeout=120)
+    at2.query_params["state"] = "Kerala"
+    at2.query_params["district"] = district
+    at2.run()
+    assert not at2.exception, at2.exception
+    assert next(sb for sb in at2.selectbox if sb.label == "District (optional)").value == district
+
+
+@needs_data
+def test_invalid_query_params_fall_back_to_all_india():
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.query_params["state"] = "Atlantis"
+    at.query_params["district"] = "Nowhere"
+    at.run()
+    assert not at.exception, at.exception
+    assert next(sb for sb in at.selectbox if sb.label == "State").value == "All India"
+
+
+@needs_data
+def test_selection_is_reflected_in_query_params():
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    next(sb for sb in at.selectbox if sb.label == "State").select("Kerala")
+    at.run()
+    assert not at.exception, at.exception
+    # The AppTest accessor returns list-valued params.
+    assert at.query_params.get("state") in ("Kerala", ["Kerala"])
+
+
+@needs_data
+def test_saved_note_appears_after_rerun():
+    """Fix B regression: a saved note is listed on the very next render."""
+    import sqlite3
+
+    marker = "AUTOTEST NOTE - safe to delete"
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    try:
+        note_area = next(ta for ta in at.text_area if ta.label == "New note")
+        note_area.input(marker)
+        next(b for b in at.button if getattr(b, "label", "") == "Save note").click()
+        at.run()
+        assert not at.exception, at.exception
+        rendered = " ".join(m.value for m in at.markdown)
+        assert marker in rendered
+    finally:
+        with sqlite3.connect(Path("data") / "reviews.db") as conn:
+            conn.execute("DELETE FROM review_notes WHERE note = ?", (marker,))
+
+
+@needs_data
 def test_scenario_acceptance_save_reopen_restart():
     """Acceptance: select a district, save a named scenario, refresh, reopen,
     verify the filters and snapshot, 'restart', verify it survived."""

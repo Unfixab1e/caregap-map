@@ -1,8 +1,9 @@
-"""CareGap Map - trust layer for ICU coverage planning in India.
+"""CareGap Map - ICU evidence trust layer for planning in India.
 
-Streamlit app: regional trust-weighted ICU coverage with facility-level
-evidence drilldown. Run `python scripts/build_processed_data.py` first,
-then `streamlit run app.py`.
+Streamlit app: regional trust-weighted ICU evidence index with
+facility-level evidence drilldown, planning-readiness checklist and
+persistent planning scenarios. Run `python scripts/build_processed_data.py`
+first, then `streamlit run app.py`.
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ from caregap_map.scenarios import (  # noqa: E402
     scenario_from_summary,
     scoring_config_fingerprint,
 )
+from caregap_map.ui_state import desired_region_params, normalize_region_request  # noqa: E402
 
 # Status colors (validated with the dataviz palette checker, severity order:
 # trusted -> review -> gap -> no data so green/red are never adjacent).
@@ -310,10 +312,12 @@ def scenarios_panel(
                     scoring_config_hash=scoring_config_fingerprint(config),
                     data_snapshot=snapshot,
                 )
-                saved = store.save_scenario(scenario)
+                with st.spinner("Saving scenario…"):
+                    saved = store.save_scenario(scenario)
                 st.success(f"Saved scenario “{saved.name}” ({saved.region_label}).")
 
-    saved_scenarios = store.list_scenarios()
+    with st.spinner("Loading scenarios…"):
+        saved_scenarios = store.list_scenarios()
     with st.expander(f"📂 Saved scenarios ({len(saved_scenarios)})"):
         if not saved_scenarios:
             st.caption("No saved scenarios yet.")
@@ -366,7 +370,11 @@ def notes_panel(scope_type: str, scope_id: str, context: str) -> None:
     """Reviewer note form + history for the given scope."""
     store = note_store()
     st.markdown(f"**Reviewer notes** - {scope_type}: `{scope_id}`")
-    existing = store.list_notes(scope_type=scope_type, scope_id=scope_id)
+    # The Delta-backed store answers via a SQL warehouse, which can take a
+    # few seconds when cold - show a real loading state instead of letting
+    # a stale "No notes yet." linger while the query runs.
+    with st.spinner("Loading notes…"):
+        existing = store.list_notes(scope_type=scope_type, scope_id=scope_id)
     for n in existing:
         st.markdown(f"> {n.note}\n>\n> - *{n.author or 'anonymous'}, {n.created_at}*")
     if not existing:
@@ -378,9 +386,10 @@ def notes_panel(scope_type: str, scope_id: str, context: str) -> None:
         )
         author = st.text_input("Author (optional)", max_chars=80)
         if st.form_submit_button("Save note") and note_text.strip():
-            store.add_note(
-                ReviewNote(scope_type=scope_type, scope_id=scope_id, note=note_text, author=author)
-            )
+            with st.spinner("Saving note…"):
+                store.add_note(
+                    ReviewNote(scope_type=scope_type, scope_id=scope_id, note=note_text, author=author)
+                )
             st.rerun()
     st.caption(context)
 
@@ -554,8 +563,15 @@ def main() -> None:
     config = load_scoring_config()
 
     # ---------------- Sidebar: capability + region selection ----------------
-    # A reopened scenario sets the selection before the widgets instantiate.
+    # A reopened scenario sets the selection before the widgets instantiate;
+    # otherwise a fresh session (e.g. after a page refresh) restores the
+    # region from the URL query parameters. Unknown values fall back to
+    # All India because they simply never match the widget options.
     pending = st.session_state.pop("pending_scenario", None)
+    if pending is None and "state_select" not in st.session_state:
+        pending = normalize_region_request(
+            st.query_params.get("state"), st.query_params.get("district")
+        )
     with st.sidebar:
         st.selectbox("Capability", ["ICU"], disabled=True, help="This milestone supports ICU only.")
         states = sorted(s for s in scored["state_final"].dropna().unique())
@@ -587,11 +603,20 @@ def main() -> None:
             st.markdown(
                 f"- judgeable if completeness ≥ **{t.sufficient_completeness}**\n"
                 f"- trusted if evidence ≥ **{t.high_evidence}**\n"
-                f"- likely gap if evidence ≤ **{t.low_evidence}**\n"
+                f"- 'no ICU evidence' if evidence ≤ **{t.low_evidence}**\n"
                 f"- region data desert below **{t.region_min_data_pct:.0f}%** judgeable "
                 f"or **{t.region_min_facilities}** records"
             )
             st.caption("Configurable via CAREGAP_SCORING_CONFIG - see DECISIONS.md.")
+
+    # Reflect the selection in the URL so a page refresh keeps the region.
+    # Only public region names are stored - never notes or identifiers.
+    desired_params = desired_region_params(state, district)
+    for key in ("state", "district"):
+        if key in st.query_params and key not in desired_params:
+            del st.query_params[key]
+        elif desired_params.get(key) and st.query_params.get(key) != desired_params[key]:
+            st.query_params[key] = desired_params[key]
 
     # ---------------- Filter the facility set ----------------
     subset = scored
