@@ -39,6 +39,7 @@ from caregap_map.codex_extraction import (  # noqa: E402
     check_resume_compatible,
     codex_cli_version,
     new_manifest,
+    partition_valid_ids,
     repo_commit_sha,
     sha256_file,
 )
@@ -229,6 +230,33 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     records = select_records(source_df, args.state, args.limit, completed_ids, args.selection)
+
+    # Corrupted column-shifted rows are quarantined before any Codex call -
+    # the model cannot echo their unique_id and would waste a full
+    # retry/split ladder per record.
+    records, corrupted = partition_valid_ids(records)
+    n_fresh_quarantined = 0
+    if corrupted:
+        from datetime import UTC, datetime
+
+        known_errors = {r.get("unique_id") for r in store._read_jsonl(store.errors_path)}
+        fresh = [r for r in corrupted if str(r["unique_id"]) not in known_errors]
+        n_fresh_quarantined = len(fresh)
+        for rec in fresh:
+            store.append_error(
+                {
+                    "unique_id": str(rec["unique_id"]),
+                    "error": "corrupted_unique_id_skipped (column-shifted source row; unjudgeable)",
+                    "model": args.model,
+                    "prompt_version": PROMPT_VERSION,
+                    "failed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                }
+            )
+        print(
+            f"Pre-quarantined {len(corrupted)} corrupted-id records "
+            f"({len(fresh)} newly written to errors.jsonl); no Codex calls spent on them."
+        )
+
     if not records:
         print("Nothing to do - all requested records are already completed.")
         build_outputs(store, source_df, 0.0, manifest or {})
@@ -268,6 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         manifest["requested_records"] = manifest.get("requested_records", 0) + len(records)
+    manifest["failed_records"] = manifest.get("failed_records", 0) + n_fresh_quarantined
     store.save_manifest(manifest)
 
     processor = BatchProcessor(

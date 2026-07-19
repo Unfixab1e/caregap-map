@@ -96,6 +96,25 @@ class TestCommandConstruction:
             assert banned not in sent["records"][0]
 
 
+class TestCorruptedIdPreQuarantine:
+    def test_prose_ids_partitioned_out(self):
+        from caregap_map.codex_extraction import partition_valid_ids
+
+        records = [
+            {"unique_id": "08344cdb-f455-4c22-8d31-a0a8e849124b"},
+            {"unique_id": "sample-0001"},
+            {"unique_id": '",null,null,null,"[""ophthalmology""'},
+            {"unique_id": "Mobile: +91-9451520000  "},
+            {"unique_id": "---|---  "},
+        ]
+        valid, corrupted = partition_valid_ids(records)
+        assert [r["unique_id"] for r in valid] == [
+            "08344cdb-f455-4c22-8d31-a0a8e849124b",
+            "sample-0001",
+        ]
+        assert len(corrupted) == 3  # never sent to Codex
+
+
 class TestResultParsing:
     def test_valid_roundtrip(self):
         result = parse_batch_result(batch_json(codex_record("a"), codex_record("b")), ["a", "b"])

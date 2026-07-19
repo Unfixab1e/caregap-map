@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import time
 import uuid
@@ -120,6 +121,24 @@ class CodexAuthError(CodexError):
 
 class CodexNotInstalledError(CodexError):
     """The codex executable is not available."""
+
+
+# Legitimate unique_ids are UUID-like tokens. Corrupted column-shifted rows
+# carry prose/emails/markdown in unique_id; the model cannot echo those
+# faithfully, so each one drags its whole batch through the retry/split
+# ladder. They are quarantined BEFORE any Codex call (they are unjudgeable
+# source rows anyway).
+UNIQUE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{5,63}$")
+
+
+def partition_valid_ids(records: list[Mapping[str, Any]]) -> tuple[list, list]:
+    """Split records into (codex-safe, corrupted-id) lists."""
+    valid: list = []
+    corrupted: list = []
+    for rec in records:
+        target = valid if UNIQUE_ID_PATTERN.match(str(rec.get("unique_id", ""))) else corrupted
+        target.append(rec)
+    return valid, corrupted
 
 
 def parse_batch_result(raw: str, requested_ids: list[str]) -> CodexBatchResult:
