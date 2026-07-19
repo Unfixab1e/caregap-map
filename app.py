@@ -42,6 +42,7 @@ from caregap_map.config import (  # noqa: E402
 load_env_file()  # .env overrides nothing that is already in the environment
 from caregap_map.data_access import MissingDataError, get_data_source  # noqa: E402
 from caregap_map.persistence import ReviewNote, ReviewStore, get_review_store  # noqa: E402
+from caregap_map.planning import PLANNING_COMPONENTS, assess_planning_readiness  # noqa: E402
 
 # Status colors (validated with the dataviz palette checker, severity order:
 # trusted -> review -> gap -> no data so green/red are never adjacent).
@@ -335,8 +336,31 @@ def facility_detail(row: pd.Series) -> None:
     with right:
         st.markdown("#### Trust assessment")
         c1, c2 = st.columns(2)
-        c1.metric("Capability evidence", f"{row['capability_evidence_score']} / 100")
-        c2.metric("Data completeness", f"{row['data_completeness_score']} / 100")
+        c1.metric(
+            "ICU evidence strength",
+            f"{row['capability_evidence_score']} / 100",
+            help="How strongly the supplied record supports ICU capability.",
+        )
+        c2.metric(
+            "Record judgeability",
+            f"{row['data_completeness_score']} / 100",
+            help=(
+                "Whether the record's fields are populated enough to evaluate what it "
+                "claims. NOT planning readiness - see the checklist below."
+            ),
+        )
+
+        readiness = assess_planning_readiness(row)
+        st.markdown(
+            f"**Planning readiness: {readiness.level}** - "
+            f"operational planning fields available: {readiness.available} of {readiness.total}"
+        )
+        for key, present in readiness.components.items():
+            st.markdown(f"{'✅' if present else '⬜'} {PLANNING_COMPONENTS[key]}")
+        st.caption(
+            "Record judgeability, ICU evidence strength and planning readiness are three "
+            "separate questions; this checklist never changes the classification."
+        )
 
         corroboration = json.loads(row.get("corroboration_categories_json") or "[]")
         min_corr = load_scoring_config().thresholds.min_corroboration_categories
