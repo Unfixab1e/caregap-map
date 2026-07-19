@@ -25,12 +25,14 @@ and planning logic built on top of it.**
 
 ## 20–30 s visual sequence (intro video)
 
-1. Open a district (or click an "Explore an example" shortcut).
+1. Land on the India evidence map; the sidebar CareGap workflow sits at Step 1.
+   Open a district (or click an "Explore an example" shortcut).
 2. The hero card answers immediately: status, data-vs-evidence meaning,
    recommended action, and the "Why this status?" path.
 3. Click one priority facility → decision summary, exact source fragment,
    missing/suspicious evidence.
-4. End on "Save this planning scenario".
+4. End on "Save this planning scenario" - the sidebar workflow ticks Step 4
+   complete on save.
 
 ## Demo video checklist (90 s — see DEMO_SCRIPT.md)
 

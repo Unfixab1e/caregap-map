@@ -10,14 +10,17 @@ situations."*
 
 ## The 20-30 second visual sequence (intro video)
 
-1. Open on the **India ICU evidence landscape** - point out red vs gray:
+1. Land on the **India ICU evidence landscape** (sidebar shows the CareGap
+   workflow at Step 1) - point out red vs gray:
    "Red means judgeable records without credible ICU evidence. Gray means we do
    not know enough." Click a yellow or red district bubble.
 2. The hero card answers at a glance: status chip, data-vs-evidence meaning,
    recommended next action, and the **Why this status?** decision path.
 3. Click one **priority facility** -> decision summary, exact source fragment,
    missing or suspicious evidence.
-4. End on **Save this planning scenario** (step 4 of the on-screen workflow).
+4. Select the district, review the regional conclusion (sidebar advances to
+   Step 2), open one priority facility (Step 3), and end on **Save this
+   planning scenario** - Step 4 ticks complete on save.
 
 ## The 90 seconds
 

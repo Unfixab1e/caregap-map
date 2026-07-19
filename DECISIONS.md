@@ -414,3 +414,31 @@ never silently dropped. The facility point map remains the district-level
 investigative detail view. No regional classification, count, threshold or dataset
 behavior changed; no new score or ranking was introduced; no external geometry or
 runtime map file was added.
+
+## D26 - The sidebar is task-oriented, not methodology-oriented
+
+Four large permanent "About this assessment" expanders dominated the sidebar while
+the four-step workflow was a decorative pill row in the main content. Inverted:
+
+**Decision:** the sidebar answers "what should I do next?" with the persistent
+**CareGap workflow** - Select a region / Understand the evidence / Review priority
+facilities / Save a planning scenario - as compact navigation cards. Each card is a
+plain HTML fragment link to a stable main-content anchor (#select-region,
+#understand-evidence, #review-facilities, #save-scenario), so navigation changes only
+the URL fragment and can never corrupt the ?state=&district= query parameters. The
+current step is inferred deterministically from session facts (region selected ->
+step 2; explicit facility review via the Review-evidence button, a district-map
+facility click or a drilldown change -> step 3; successful scenario save -> step 4
+complete), with completed/current/upcoming marked by symbol, weight and border -
+never color alone, and never a persisted database field. The old pill row is gone; a
+compact "Step N of 4" indicator in the main content mirrors the sidebar for collapsed
+-sidebar screens, and the region selectors stay on the main page so the sidebar is a
+convenience, never the sole path. Methodology and limitations moved to ONE collapsed
+"About this assessment" expander at the sidebar bottom (Evidence policy v1,
+Methodology, Dataset limitations, Technical details - all content and disclaimers
+preserved, progressively disclosed). Reviewer-note and scenario copy was rewritten
+for planners: storage technology ("configured review store", "SQLite/Delta") left the
+UI; what remains is who can see a note and what a scenario records. Main page keeps
+answering "what does the data show?" - the map and regional result gained the
+reclaimed vertical space. No scoring, classification, aggregation or persistence
+change.

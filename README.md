@@ -163,7 +163,7 @@ deliberately excludes `openai` (LLM extraction is an offline preprocessing workf
 
 ## What the app does
 
-The interface is organised as a four-step planner workflow (D24) — **1 Select
+The interface is organised as a four-step planner workflow (D24) with a persistent task-oriented sidebar (D26: the sidebar answers "what should I do next?", the main page answers "what does the data show?"; methodology sits in one collapsed About this assessment expander) — **1 Select
 region → 2 Understand the evidence → 3 Review priority facilities → 4 Save a
 planning scenario** — with the regional status, plain-language meaning and
 recommended next action visible in the first viewport. For screenshots, capture

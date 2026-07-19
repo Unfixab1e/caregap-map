@@ -86,7 +86,7 @@ JSON file pointed to by `CAREGAP_SCORING_CONFIG` (see DECISIONS.md D5).
 
 ## Required user workflow
 
-The UI presents this as four numbered stages (D24): Select region → Understand
+The UI presents this as four numbered stages with a persistent task-oriented sidebar (D24, D26): Select region → Understand
 the evidence → Review priority facilities → Save a planning scenario.
 
 1. Select ICU (fixed) and a state or district.
