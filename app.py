@@ -43,7 +43,12 @@ from caregap_map.config import (  # noqa: E402
 load_env_file()  # .env overrides nothing that is already in the environment
 from caregap_map.data_access import MissingDataError, get_data_source  # noqa: E402
 from caregap_map.persistence import ReviewNote, ReviewStore, get_review_store  # noqa: E402
-from caregap_map.planning import PLANNING_COMPONENTS, assess_planning_readiness  # noqa: E402
+from caregap_map.planning import (  # noqa: E402
+    OPERATIONAL_COMPONENTS,
+    OPERATIONAL_HELP,
+    assess_operational_data,
+    assessment_status,
+)
 from caregap_map.scenarios import (  # noqa: E402
     ScenarioStore,
     data_snapshot_id,
@@ -414,11 +419,12 @@ def facility_detail(row: pd.Series) -> None:
         pretty = [SUBTYPE_LABELS.get(s, s) for s in subtypes]
         if SUBTYPE_GENERAL not in subtypes:
             st.warning(
-                f"⚕️ Intensive-care evidence found: **{', '.join(pretty)} only** — "
-                "no general adult ICU claim in this record."
+                f"⚕️ **ICU evidence type: {', '.join(pretty)} only.** Specialised "
+                "intensive-care evidence does not automatically establish general "
+                "adult ICU capability."
             )
         else:
-            st.markdown(f"⚕️ **Intensive-care evidence:** {', '.join(pretty)}")
+            st.markdown(f"⚕️ **ICU evidence type:** {', '.join(pretty)}")
 
     left, right = st.columns([1, 1])
 
@@ -470,21 +476,42 @@ def facility_detail(row: pd.Series) -> None:
             f"{row['data_completeness_score']} / 100",
             help=(
                 "Whether the record's fields are populated enough to evaluate what it "
-                "claims. NOT planning readiness - see the checklist below."
+                "claims. Not 'fully documented', not ICU-informative content, not "
+                "operational data availability - see the checklist below."
             ),
         )
 
-        readiness = assess_planning_readiness(row)
+        data = assess_operational_data(row)
         st.markdown(
-            f"**Planning readiness: {readiness.level}** - "
-            f"operational planning fields available: {readiness.available} of {readiness.total}"
+            f"**Operational data availability: {data.summary}**",
+            help=OPERATIONAL_HELP,
         )
-        for key, present in readiness.components.items():
-            st.markdown(f"{'✅' if present else '⬜'} {PLANNING_COMPONENTS[key]}")
+        for key, present in data.components.items():
+            st.markdown(f"{'✅' if present else '⬜'} {OPERATIONAL_COMPONENTS[key]}")
+        if data.source_warning:
+            st.warning(f"⚠️ {data.source_warning}")
+        with st.expander("Operational field details"):
+            for key, label in OPERATIONAL_COMPONENTS.items():
+                st.markdown(f"**{label}** — {data.details.get(key, '-')}")
         st.caption(
-            "Record judgeability, ICU evidence strength and planning readiness are three "
-            "separate questions; this checklist never changes the classification."
+            "ICU evidence strength, record judgeability and operational data "
+            "availability are separate questions; this checklist is descriptive "
+            "only and never changes the classification."
         )
+
+        status = assessment_status(row["classification"])
+        st.markdown("##### Automated evidence assessment")
+        st.markdown(f"{status.icon} **{status.headline}**")
+        st.caption(status.help_text)
+        if not status.resolved:
+            st.markdown(f"**Reason:** {row['classification_reason']}")
+            critical = [
+                f
+                for f in json.loads(row["validation_flags_json"])
+                if f["severity"] in ("contradiction", "suspicious")
+            ]
+            for f in critical:
+                st.markdown(f"- 🟡 `{f['name']}` — {f['detail']}")
 
         corroboration = json.loads(row.get("corroboration_categories_json") or "[]")
         min_corr = load_scoring_config().thresholds.min_corroboration_categories
@@ -573,7 +600,19 @@ def main() -> None:
             st.query_params.get("state"), st.query_params.get("district")
         )
     with st.sidebar:
-        st.selectbox("Capability", ["ICU"], disabled=True, help="This milestone supports ICU only.")
+        st.selectbox(
+            "Capability",
+            ["ICU — prototype scope"],
+            disabled=True,
+            help=(
+                "CareGap Map currently supports ICU evidence assessment. Other "
+                "healthcare capabilities require separately calibrated evidence "
+                "vocabularies, validators, thresholds and human evaluation. The "
+                "architecture is capability-extensible, but this prototype "
+                "deliberately validates ICU deeply rather than applying shallow "
+                "keyword rules across multiple clinical capabilities."
+            ),
+        )
         states = sorted(s for s in scored["state_final"].dropna().unique())
         state_options = ["All India"] + states + [UNASSIGNED]
         if pending is not None:
@@ -645,7 +684,7 @@ def main() -> None:
     if summary["region_status"] == REGION_DATA_DESERT and summary["facility_count"] > 0:
         st.caption(
             "⚠️ This region is a **data desert**: the records are too thin to judge. "
-            "Treat it as *unknown*, not as a confirmed ICU gap."
+            "Treat it as *unknown*, never as an established ICU gap."
         )
 
     # ---------------- Planning scenarios ----------------

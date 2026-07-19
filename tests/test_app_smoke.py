@@ -48,6 +48,38 @@ def test_state_selection_updates_summary():
 
 
 @needs_data
+def test_prototype_scope_capability_control():
+    """The capability control shows the ICU prototype scope and nothing else."""
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    assert not at.exception, at.exception
+    capability = next(sb for sb in at.selectbox if sb.label == "Capability")
+    assert capability.options == ["ICU — prototype scope"]
+    assert capability.disabled is True
+
+
+@needs_data
+def test_facility_and_regional_counts_unchanged_by_operational_view():
+    """D23 is descriptive only: stored classifications and regional statuses
+    keep the exact pre-change distribution."""
+    import pandas as pd
+
+    scored = pd.read_parquet(PROCESSED / "facilities_scored.parquet")
+    counts = scored["classification"].value_counts()
+    assert counts["Trusted ICU Coverage"] == 203
+    assert counts["Needs Human Review"] == 2867
+    assert counts["Likely Medical Gap"] == 6890
+    assert counts["Insufficient Data"] == 117
+
+    districts = pd.read_parquet(PROCESSED / "region_summary_district.parquet")
+    status = districts["region_status"].value_counts()
+    assert status["Trusted ICU evidence found"] == 103
+    assert status["Needs facility verification"] == 256
+    assert status["Potential planning gap"] == 32
+    assert status["Insufficient data to assess"] == 186
+
+
+@needs_data
 def test_query_params_restore_region_after_refresh():
     """Fix A: ?state=...&district=... survives a fresh session (page refresh)."""
     at = AppTest.from_file(str(APP), default_timeout=120)
