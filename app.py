@@ -124,7 +124,9 @@ st.set_page_config(
 
 _CSS = """
 <style>
-.block-container {padding-top: 1.1rem; padding-bottom: 3rem;}
+/* Streamlit's app header is a ~3.75rem sticky overlay: the content needs
+   at least that much top padding or the title renders underneath it. */
+.block-container {padding-top: 4.25rem; padding-bottom: 3rem;}
 .cg-title {font-size: 1.9rem; font-weight: 800; line-height: 1.15; margin: 0;}
 .cg-subtitle {font-size: 1.0rem; opacity: .78; margin: .1rem 0 .55rem 0;}
 .cg-workflow {display: flex; gap: .45rem; flex-wrap: wrap; margin: 0 0 .8rem 0;}
