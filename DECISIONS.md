@@ -344,3 +344,49 @@ display time from existing columns (no Parquet rebuild). `PlanningScenario` neve
 stored readiness fields, so saved scenarios are unaffected and need no version bump.
 The module keeps its `planning.py` filename; the public API uses the new wording. This
 checklist is NOT a clinically validated planning-readiness standard.
+
+## D24 — The interface is organised around the NGO planner workflow
+
+The app had strong evidence and traceability functionality but read like an analyst
+dashboard: sidebar-driven selection, nine metric cards, scenario forms before the
+evidence, and a drilldown that led with raw fields. The redesign reorganises **only
+presentation** around four visually numbered stages:
+
+**1 Select region → 2 Understand the evidence → 3 Review priority facilities →
+4 Save a planning scenario**
+
+Decisions:
+
+- **Regional hero card** — region, status chip (icon + label + text, never color
+  alone), one-sentence meaning and a recommended next action, both centralised in
+  `caregap_map.regional_guidance` so the copy is testable for all four statuses (the
+  Trusted wording explicitly denies population-coverage adequacy; the gap wording
+  demands field verification; the desert wording forbids the gap conclusion).
+- **"Why this status?" decision path** — connected step cards mirroring the existing
+  regional precedence (enough records → enough judgeable data → trusted evidence →
+  unresolved claims → stored result) from existing summary values and configured
+  thresholds only; no new score, thresholds surface in tooltips.
+- **Planner-first metrics** — four cards (records, judgeable %, trusted, needs
+  verification) plus a 100 % stacked evidence-status bar; the trust-weighted ICU
+  evidence index and trusted-record share moved into the "How this regional assessment
+  was calculated" expander (still in product and docs, D19 wording unchanged).
+- **Priority facilities** — up to five records tiered transparently over existing
+  statuses and flags (needs-review first, then flagged trusted, then trusted; gap
+  records only in planning-gap regions); the full table lives in "View all N facility
+  records". No opaque risk score or ranking.
+- **Progressive drilldown** — decision summary → exact evidence fragments →
+  missing/uncertain → reviewer note → collapsed technical expanders (full supplied
+  record, scoring/validator details incl. the operational-data checklist, source and
+  provenance). Nothing was deleted; only the default hierarchy changed.
+- **Scenarios are step 4** — the save form moved after understanding/review; saved
+  scenarios stay in a collapsed panel; Delta persistence and semantics unchanged.
+- **Sidebar is secondary** — collapsed by default: "Evidence policy v1" (the complete
+  Trusted rule and thresholds, explicitly "versioned evidence-policy settings, not
+  planner preferences" — no sliders), methodology, dataset limitations.
+- **Deterministic demo shortcuts** — up to three example regions picked from the
+  CURRENT region summary by status (never hard-coded names), driving the normal
+  selection and URL parameters.
+
+Scoring, classification, aggregation, thresholds, validators, stored counts,
+persistence schemas and URL state are untouched; guarded by the counts test, the
+wording-safety scan (extended to the new modules) and the existing AppTest flows.

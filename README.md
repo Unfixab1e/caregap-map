@@ -163,6 +163,14 @@ deliberately excludes `openai` (LLM extraction is an offline preprocessing workf
 
 ## What the app does
 
+The interface is organised as a four-step planner workflow (D24) — **1 Select
+region → 2 Understand the evidence → 3 Review priority facilities → 4 Save a
+planning scenario** — with the regional status, plain-language meaning and
+recommended next action visible in the first viewport. For screenshots, capture
+the live app at 1440×900: (a) the regional hero + decision path for a district,
+(b) one priority facility's decision summary with an exact fragment, (c) the
+save-scenario form.
+
 1. Capability is fixed to **ICU**; pick a state and optionally a district.
 2. Read the regional verdict: the trust-weighted ICU evidence index, judgeable-record
    share, trusted-record share and the four-state breakdown — **evidence gaps and data

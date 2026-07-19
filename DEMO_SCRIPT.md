@@ -8,6 +8,15 @@ general-ICU record, one subtype-only record) in browser tabs.
 **Core line:** *"No ICU evidence and not enough data to know are different planning
 situations."*
 
+## The 20-30 second visual sequence (intro video)
+
+1. Open a district or click an **Explore an example** shortcut.
+2. The hero card answers at a glance: status chip, data-vs-evidence meaning,
+   recommended next action, and the **Why this status?** decision path.
+3. Click one **priority facility** -> decision summary, exact source fragment,
+   missing or suspicious evidence.
+4. End on **Save this planning scenario** (step 4 of the on-screen workflow).
+
 ## The 90 seconds
 
 1. **(0:00–0:12) Headline.** All-India view.

@@ -23,6 +23,15 @@ storage with Delta persistence and MLflow 3 evaluation.
 **Databricks is the governed operating layer; CareGap Map is the trust
 and planning logic built on top of it.**
 
+## 20–30 s visual sequence (intro video)
+
+1. Open a district (or click an "Explore an example" shortcut).
+2. The hero card answers immediately: status, data-vs-evidence meaning,
+   recommended action, and the "Why this status?" path.
+3. Click one priority facility → decision summary, exact source fragment,
+   missing/suspicious evidence.
+4. End on "Save this planning scenario".
+
 ## Demo video checklist (90 s — see DEMO_SCRIPT.md)
 
 - [ ] Headline: 203 of 10,077 ≠ "only 203 ICUs"
