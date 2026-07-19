@@ -93,6 +93,19 @@ Legend: ✅ code-complete **and** locally tested · 🟡 code-complete, **not li
 - ✅ Docs/demo updated to the defensible wording (README headline-number guide,
   DEMO_SCRIPT never-say list)
 
+## Final hardening & submission readiness (2026-07-19)
+
+- ✅ Codex extraction isolated: frozen worktree @ f3a6aa2, same run/manifest resumed,
+  completed IDs skipped (zero duplicates), counts still increasing
+- ✅ main@f2eaee8 deployed; streamlit/plotly pinned to tested versions
+- ✅ Region selection survives refresh via query params (?state=&district=)
+- ✅ Note/scenario loading + saving states (no false "No notes yet")
+- ✅ planning_scenarios Delta table + SP grants; storage-layer acceptance green
+- ✅ Bounded MLflow 3 evaluation executed live: 34 traces, 11 spans each,
+  experiment /Users/blubthefish@gmail.com/caregap-evaluation
+- ✅ Demo candidate finder; architecture README; final demo script; SUBMISSION.md
+- ⬜ Human in-browser click-through of the final build (2 minutes)
+
 ## Backlog
 
 - ⬜ NFHS district-level join (fuzzy match with recorded confidence)
