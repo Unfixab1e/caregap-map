@@ -78,6 +78,31 @@ def test_state_selection_updates_summary():
 
 
 @needs_data
+def test_hero_counts_render_without_markdown_artifacts():
+    """Regression: the hero count line is raw HTML - literal ** markers must
+    never appear, in the All India view or a district view."""
+
+    def hero_counts(at: AppTest) -> str:
+        return next(m.value for m in at.markdown if '<div class="cg-counts">' in str(m.value))
+
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    counts = hero_counts(at)
+    assert "**" not in counts
+    assert "<strong>" in counts
+
+    next(sb for sb in at.selectbox if sb.label == "State").select("Kerala")
+    at.run()
+    district_box = next(sb for sb in at.selectbox if sb.label == "District (optional)")
+    district_box.select(district_box.options[1])
+    at.run()
+    assert not at.exception, at.exception
+    counts = hero_counts(at)
+    assert "**" not in counts
+    assert "<strong>" in counts
+
+
+@needs_data
 def test_prototype_scope_capability_control():
     """The capability control shows the ICU prototype scope and nothing else."""
     at = AppTest.from_file(str(APP), default_timeout=120)

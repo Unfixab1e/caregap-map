@@ -94,6 +94,26 @@ def select_priority_facilities(
     return merged.head(limit)
 
 
+def hero_counts_html(summary: dict) -> str:
+    """The hero-card count line as HTML (rendered with unsafe_allow_html).
+
+    Markdown syntax is NOT interpreted inside raw-HTML blocks, so bolding
+    must use <strong>, never ``**``. Only integer counts from the regional
+    summary are interpolated - no user-supplied content enters this HTML.
+    """
+
+    def strong(key: str) -> str:
+        return f"<strong>{int(summary.get(key, 0))}</strong>"
+
+    return (
+        f"{strong('facility_count')} supplied records &nbsp;·&nbsp; "
+        f"🟢 {strong('trusted_icu_count')} trusted evidence &nbsp;·&nbsp; "
+        f"🟡 {strong('needs_review_count')} need review &nbsp;·&nbsp; "
+        f"🔴 {strong('likely_gap_count')} show no ICU evidence &nbsp;·&nbsp; "
+        f"⚪ {strong('insufficient_data_count')} insufficient"
+    )
+
+
 def status_distribution(subset: pd.DataFrame) -> list[dict]:
     """Counts + percentages per evidence status, in stable display order."""
     n = len(subset)

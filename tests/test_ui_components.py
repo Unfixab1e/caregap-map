@@ -18,6 +18,7 @@ from caregap_map.config import (
 )
 from caregap_map.ui_components import (
     example_regions,
+    hero_counts_html,
     humanize_flag,
     primary_flag,
     select_priority_facilities,
@@ -107,6 +108,42 @@ class TestFlags:
         row = facility("a", CLASS_TRUSTED, flag_names=["icu_claim_uncorroborated"])
         assert primary_flag(row) == "Icu claim uncorroborated"
         assert primary_flag(facility("b", CLASS_TRUSTED)) is None
+
+
+class TestHeroCountsHtml:
+    SUMMARY = {
+        "facility_count": 10077,
+        "trusted_icu_count": 203,
+        "needs_review_count": 2867,
+        "likely_gap_count": 6890,
+        "insufficient_data_count": 117,
+    }
+
+    def test_uses_html_strong_never_markdown_bold(self):
+        html = hero_counts_html(self.SUMMARY)
+        # Markdown is not interpreted inside unsafe_allow_html blocks, so a
+        # literal ** would render as visible asterisks.
+        assert "**" not in html
+        for count in (10077, 203, 2867, 6890, 117):
+            assert f"<strong>{count}</strong>" in html
+
+    def test_labels_and_icons_preserved(self):
+        html = hero_counts_html(self.SUMMARY)
+        for token in (
+            "supplied records",
+            "🟢",
+            "trusted evidence",
+            "🟡",
+            "need review",
+            "🔴",
+            "show no ICU evidence",
+            "⚪",
+            "insufficient",
+        ):
+            assert token in html
+
+    def test_missing_keys_default_to_zero(self):
+        assert "<strong>0</strong>" in hero_counts_html({})
 
 
 class TestDistribution:

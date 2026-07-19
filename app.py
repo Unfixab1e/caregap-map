@@ -68,6 +68,7 @@ from caregap_map.scenarios import (  # noqa: E402
 )
 from caregap_map.ui_components import (  # noqa: E402
     example_regions,
+    hero_counts_html,
     primary_flag,
     select_priority_facilities,
     status_distribution,
@@ -330,14 +331,10 @@ def hero_card(region_label: str, summary: dict) -> None:
         st.markdown(status_chip(summary["region_status"]), unsafe_allow_html=True)
         st.markdown(f"**{guidance.meaning}**")
         st.markdown(f"**Recommended next action** — {guidance.action}")
-        counts = (
-            f"**{summary['facility_count']}** supplied records &nbsp;·&nbsp; "
-            f"🟢 **{summary['trusted_icu_count']}** trusted evidence &nbsp;·&nbsp; "
-            f"🟡 **{summary['needs_review_count']}** need review &nbsp;·&nbsp; "
-            f"🔴 **{summary['likely_gap_count']}** show no ICU evidence &nbsp;·&nbsp; "
-            f"⚪ **{summary['insufficient_data_count']}** insufficient"
+        st.markdown(
+            f'<div class="cg-counts">{hero_counts_html(summary)}</div>',
+            unsafe_allow_html=True,
         )
-        st.markdown(f'<div class="cg-counts">{counts}</div>', unsafe_allow_html=True)
         if summary["region_status"] == REGION_DATA_DESERT and summary["facility_count"] > 0:
             st.caption(
                 "⚠️ This region is a **data desert**: the records are too thin to judge. "
