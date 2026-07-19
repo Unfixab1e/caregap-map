@@ -442,3 +442,27 @@ UI; what remains is who can see a note and what a scenario records. Main page ke
 answering "what does the data show?" - the map and regional result gained the
 reclaimed vertical space. No scoring, classification, aggregation or persistence
 change.
+
+## D27 - Facility context is review priority, never evidence status
+
+Reviewer QA on a planning-gap district showed two UX problems: district-map markers
+were too small to see at the default zoom (overlapping coordinates looked like one
+point), and the priority list could be dominated by Path Labs, dental clinics and
+other outpatient providers - technically correct "no ICU evidence" records that are
+weak evidence for a general-ICU planning conclusion.
+
+**Decision:** a conservative, name-based, display-only **facility context** (Likely
+general-hospital / Specialty or limited-scope hospital / Outpatient-diagnostic /
+Unknown) ranks records WITHIN the existing priority tiers (general > specialty >
+unknown > outpatient) and feeds a district facility-mix sentence plus a careful
+warning when a planning-gap result rests mostly on limited-scope providers. The
+context never modifies evidence scores, classifications, regional statuses, counts or
+persistence; no record is removed or hidden anywhere (map, full table, selector); and
+the wording never claims a specialty facility cannot run an ICU or that outpatient
+records are bad data. The district map gained visible markers (14px/0.9 opacity - no
+outline stroke exists for MapLibre scatter markers), a deterministic bounds-aware
+zoom from unmodified coordinates (never jittered), a richer hover (city/district,
+evidence score, judgeability) and an overlap caption. The planning-gap demo example
+now deterministically prefers hospital-rich, well-located districts with a fallback to
+the previous most-records pick. The page title links back to the query-parameter-free
+All-India view so the national map is always one click away.
