@@ -74,6 +74,41 @@ validates **internal consistency and supplied-record traceability** — cross-fi
 agreement is treated as consistency, never as independent confirmation — and does not
 certify live service availability (see DECISIONS D18).
 
+## Architecture: what is Databricks, what is CareGap Map
+
+> **Databricks is the governed operating layer; CareGap Map is the trust
+> and planning logic built on top of it.**
+
+```mermaid
+flowchart TD
+    A[Challenge datasets] --> B[Custom deterministic evidence pipeline]
+    B --> C[Processed evidence snapshot - Parquet]
+    C --> D[Unity Catalog managed volume]
+    D -->|Files API| E[Databricks App]
+    E --> F[Planner UI - Streamlit]
+    E -->|service-principal OAuth| G[SQL warehouse]
+    G --> H[(Delta: reviewer notes)]
+    G --> I[(Delta: planning scenarios)]
+    C --> J[Evaluation sample <= 65 records]
+    J --> K[MLflow 3 tracing + metrics]
+    K --> L[Human / OpenAI / Codex comparison]
+```
+
+**Databricks provides:** Databricks Apps hosting; the app's
+service-principal identity; Unity Catalog governance; managed volume
+storage; Files API data access; SQL warehouse compute; Delta persistence
+(notes + scenarios); MLflow 3 tracing/evaluation; deployment and runtime
+logs.
+
+**CareGap Map provides:** evidence extraction; exact-fragment
+verification; deterministic validators; ICU subtype logic; evidence and
+completeness scoring; data-desert vs planning-gap logic; the planner
+workflow; planning readiness; the human-review workflow; saved planning
+scenarios.
+
+Databricks did not produce the custom scoring or classification logic —
+and the custom logic never certifies real-world clinical availability.
+
 ## Quickstart
 
 Requires Python ≥ 3.11.
