@@ -78,6 +78,30 @@ def test_state_selection_updates_summary():
 
 
 @needs_data
+def test_national_evidence_landscape_is_the_landing_view():
+    """D25: All India opens on the evidence landscape; a district view does
+    not render it and keeps the facility map for the investigative detail."""
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    assert not at.exception, at.exception
+    subheaders = " ".join(str(s.value) for s in at.subheader)
+    assert "India ICU evidence landscape" in subheaders
+    assert "India-wide evidence" in subheaders
+    captions = " ".join(str(c.value) for c in at.caption)
+    assert "not real-world ICU operation" in captions  # permanent caption
+    # District view: national landscape gone, regional hero present instead.
+    at.query_params["state"] = "Kerala"
+    at2 = AppTest.from_file(str(APP), default_timeout=120)
+    at2.query_params["state"] = "Kerala"
+    at2.run()
+    assert not at2.exception, at2.exception
+    subheaders2 = " ".join(str(s.value) for s in at2.subheader)
+    assert "India ICU evidence landscape" not in subheaders2
+    headers2 = " ".join(h.value for h in at2.header)
+    assert "Kerala" in headers2
+
+
+@needs_data
 def test_hero_counts_render_without_markdown_artifacts():
     """Regression: the hero count line is raw HTML - literal ** markers must
     never appear, in the All India view or a district view."""
@@ -85,14 +109,15 @@ def test_hero_counts_render_without_markdown_artifacts():
     def hero_counts(at: AppTest) -> str:
         return next(m.value for m in at.markdown if '<div class="cg-counts">' in str(m.value))
 
+    # The hero card renders for state and district views (All India uses the
+    # national landing instead, D25).
     at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    next(sb for sb in at.selectbox if sb.label == "State").select("Kerala")
     at.run()
     counts = hero_counts(at)
     assert "**" not in counts
     assert "<strong>" in counts
-
-    next(sb for sb in at.selectbox if sb.label == "State").select("Kerala")
-    at.run()
     district_box = next(sb for sb in at.selectbox if sb.label == "District (optional)")
     district_box.select(district_box.options[1])
     at.run()

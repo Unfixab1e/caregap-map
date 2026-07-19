@@ -390,3 +390,27 @@ Decisions:
 Scoring, classification, aggregation, thresholds, validators, stored counts,
 persistence schemas and URL state are untouched; guarded by the counts test, the
 wording-safety scan (extended to the new modules) and the existing AppTest flows.
+
+## D25 - The national landing view is a district-centroid evidence landscape
+
+The strongest first impression is a national map, but a coverage-style map would be
+dishonest: the app cannot show true healthcare coverage, capacity adequacy,
+accessibility or live availability, and coloring whole STATES by the regional status
+would let one Trusted record paint a large state green. A district choropleth would
+need a redistributable boundary dataset the repo deliberately does not carry (see the
+choropleth stretch item).
+
+**Decision:** the All-India view opens on the **India ICU evidence landscape** - a
+district-centroid bubble map built entirely from existing processed data: centroid =
+median of the district's validly-located facility coordinates, color = the existing
+four regional statuses (gray for insufficient data is essential - without it the map
+would visually collapse data deserts into medical gaps), size = number of supplied
+records. Hover shows the district's counts and judgeable share; clicking a bubble
+drives the normal state/district selection (and URL parameters) into the planner
+summary. A permanent caption states that colors represent evidence status in the
+supplied dataset, not real-world ICU operation, population coverage, travel access or
+service capacity. Districts without usable coordinates are counted in the caption,
+never silently dropped. The facility point map remains the district-level
+investigative detail view. No regional classification, count, threshold or dataset
+behavior changed; no new score or ranking was introduced; no external geometry or
+runtime map file was added.

@@ -132,6 +132,56 @@ def status_distribution(subset: pd.DataFrame) -> list[dict]:
     return out
 
 
+def district_centroids(scored: pd.DataFrame, region_district: pd.DataFrame) -> pd.DataFrame:
+    """One row per district for the national evidence landscape (D25).
+
+    Built ENTIRELY from existing processed data: the centroid is the median
+    of the district's validly-located facility coordinates (median resists
+    outlier points), joined with the existing district regional summary for
+    status and counts. No external boundary geometry, no new score.
+    Districts without any usable coordinates - and unassigned rows - are
+    excluded here and must be counted in a caption by the caller.
+    """
+    located = scored[scored["coord_status"] == "ok"]
+    located = located[located["state_final"].notna() & located["district_final"].notna()]
+    if located.empty:
+        return pd.DataFrame(
+            columns=["state", "district", "lat", "lon", "region_status", "facility_count"]
+        )
+    centroids = (
+        located.groupby(["state_final", "district_final"])[["lat_parsed", "lon_parsed"]]
+        .median()
+        .reset_index()
+        .rename(
+            columns={
+                "state_final": "state",
+                "district_final": "district",
+                "lat_parsed": "lat",
+                "lon_parsed": "lon",
+            }
+        )
+    )
+    regions = region_district[
+        (region_district["state"] != "(unassigned)")
+        & (region_district["district"] != "(unassigned)")
+    ][
+        [
+            "state",
+            "district",
+            "region_status",
+            "facility_count",
+            "trusted_icu_count",
+            "needs_review_count",
+            "likely_gap_count",
+            "insufficient_data_count",
+            "pct_sufficient_data",
+        ]
+    ]
+    return centroids.merge(regions, on=["state", "district"], how="inner").sort_values(
+        ["state", "district"], ignore_index=True
+    )
+
+
 def example_regions(region_district: pd.DataFrame) -> dict[str, tuple[str, str]]:
     """Up to three deterministic demo selections from the CURRENT data.
 

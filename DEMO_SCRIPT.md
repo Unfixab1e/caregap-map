@@ -10,7 +10,9 @@ situations."*
 
 ## The 20-30 second visual sequence (intro video)
 
-1. Open a district or click an **Explore an example** shortcut.
+1. Open on the **India ICU evidence landscape** - point out red vs gray:
+   "Red means judgeable records without credible ICU evidence. Gray means we do
+   not know enough." Click a yellow or red district bubble.
 2. The hero card answers at a glance: status chip, data-vs-evidence meaning,
    recommended next action, and the **Why this status?** decision path.
 3. Click one **priority facility** -> decision summary, exact source fragment,

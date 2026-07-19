@@ -164,6 +164,79 @@ class TestDistribution:
         assert all(r["count"] == 0 for r in rows)
 
 
+class TestDistrictCentroids:
+    def _scored(self):
+        def rec(uid, state, district, lat, lon, coord_status="ok"):
+            return {
+                "unique_id": uid,
+                "state_final": state,
+                "district_final": district,
+                "lat_parsed": lat,
+                "lon_parsed": lon,
+                "coord_status": coord_status,
+            }
+
+        return pd.DataFrame(
+            [
+                rec("a1", "A", "D1", 10.0, 70.0),
+                rec("a2", "A", "D1", 12.0, 72.0),
+                rec("a3", "A", "D1", 11.0, 71.0),
+                rec("a4", "A", "D1", 99.0, 99.0, coord_status="out_of_range"),  # ignored
+                rec("b1", "B", "D2", 20.0, 80.0),
+                rec("c1", "C", "D3", None, None, coord_status="missing"),  # never located
+                rec("u1", None, None, 15.0, 75.0),  # unassigned - excluded
+            ]
+        )
+
+    def _regions(self):
+        def region(state, district, status, count):
+            return {
+                "state": state,
+                "district": district,
+                "region_status": status,
+                "facility_count": count,
+                "trusted_icu_count": 1,
+                "needs_review_count": 2,
+                "likely_gap_count": 3,
+                "insufficient_data_count": 0,
+                "pct_sufficient_data": 90.0,
+            }
+
+        return pd.DataFrame(
+            [
+                region("A", "D1", REGION_NEEDS_REVIEW, 4),
+                region("B", "D2", REGION_TRUSTED, 1),
+                region("C", "D3", REGION_DATA_DESERT, 1),  # no located records -> off-map
+                region("(unassigned)", "(unassigned)", REGION_DATA_DESERT, 99),
+            ]
+        )
+
+    def test_centroid_is_median_of_located_coordinates(self):
+        from caregap_map.ui_components import district_centroids
+
+        out = district_centroids(self._scored(), self._regions())
+        d1 = out[out["district"] == "D1"].iloc[0]
+        assert d1["lat"] == 11.0 and d1["lon"] == 71.0  # median, outlier row ignored
+        assert d1["region_status"] == REGION_NEEDS_REVIEW
+        assert d1["facility_count"] == 4
+
+    def test_unlocated_and_unassigned_districts_are_excluded(self):
+        from caregap_map.ui_components import district_centroids
+
+        out = district_centroids(self._scored(), self._regions())
+        assert set(out["district"]) == {"D1", "D2"}
+        assert "(unassigned)" not in set(out["state"])
+
+    def test_deterministic_order_and_join_columns(self):
+        from caregap_map.ui_components import district_centroids
+
+        a = district_centroids(self._scored(), self._regions())
+        b = district_centroids(self._scored(), self._regions())
+        pd.testing.assert_frame_equal(a, b)
+        for col in ("region_status", "facility_count", "pct_sufficient_data"):
+            assert col in a.columns
+
+
 class TestExampleRegions:
     def _regions(self):
         def region(state, district, status, count):

@@ -67,6 +67,7 @@ from caregap_map.scenarios import (  # noqa: E402
     scoring_config_fingerprint,
 )
 from caregap_map.ui_components import (  # noqa: E402
+    district_centroids,
     example_regions,
     hero_counts_html,
     primary_flag,
@@ -108,6 +109,22 @@ CHIP_STYLE = {
     CLASS_LIKELY_GAP: ("#c22f2f", "#ffffff"),
     CLASS_INSUFFICIENT: ("#5f5d58", "#ffffff"),
 }
+
+REGION_STATUS_ORDER = [REGION_TRUSTED, REGION_NEEDS_REVIEW, REGION_PLANNING_GAP, REGION_DATA_DESERT]
+# Regional statuses reuse the validated class palette; gray for data deserts
+# is essential - without it the map would visually collapse data deserts
+# into medical gaps, the exact mistake CareGap Map is designed to prevent.
+REGION_COLORS = {
+    REGION_TRUSTED: CLASS_COLORS[CLASS_TRUSTED],
+    REGION_NEEDS_REVIEW: CLASS_COLORS[CLASS_NEEDS_REVIEW],
+    REGION_PLANNING_GAP: CLASS_COLORS[CLASS_LIKELY_GAP],
+    REGION_DATA_DESERT: CLASS_COLORS[CLASS_INSUFFICIENT],
+}
+
+LANDSCAPE_CAPTION = (
+    "Colors represent evidence status in the supplied dataset — not real-world "
+    "ICU operation, population coverage, travel access or service capacity."
+)
 
 WORKFLOW_STEPS = [
     "Select region",
@@ -321,6 +338,137 @@ def facility_map(subset: pd.DataFrame) -> str | None:
     except (AttributeError, KeyError, IndexError, TypeError):
         pass
     return None
+
+
+def national_evidence_map(centroids: pd.DataFrame) -> tuple[str, str] | None:
+    """District-centroid bubble map of the national evidence landscape (D25).
+
+    One bubble per district: color = existing regional evidence status,
+    size = number of supplied records, centroid = median of the district's
+    validly-located facility coordinates. Built entirely from the processed
+    data - no external boundary geometry. Returns a freshly clicked
+    (state, district), applied once so the selection controls stay free.
+    """
+    if centroids.empty:
+        st.info("No districts with usable coordinates - use the selectors instead.")
+        return None
+    plot = centroids.copy()
+    plot["status_label"] = plot["region_status"].map(
+        lambda s: f"{CLASS_ICONS.get(s, '⚪')} {s}"
+    )
+    order = [f"{CLASS_ICONS[s]} {s}" for s in REGION_STATUS_ORDER]
+    colors = {f"{CLASS_ICONS[s]} {s}": REGION_COLORS[s] for s in REGION_STATUS_ORDER}
+    fig = px.scatter_map(
+        plot,
+        lat="lat",
+        lon="lon",
+        color="status_label",
+        size="facility_count",
+        size_max=26,
+        category_orders={"status_label": order},
+        color_discrete_map=colors,
+        custom_data=[
+            "state",
+            "district",
+            "facility_count",
+            "trusted_icu_count",
+            "needs_review_count",
+            "likely_gap_count",
+            "insufficient_data_count",
+            "pct_sufficient_data",
+        ],
+        zoom=3.4,
+        center={"lat": 22.5, "lon": 80.0},
+        height=520,
+    )
+    template = (
+        "<b>%{customdata[1]}, %{customdata[0]}</b><br>STATUS<br>"
+        "%{customdata[2]} facility records<br>"
+        "🟢 %{customdata[3]} trusted · 🟡 %{customdata[4]} need review<br>"
+        "🔴 %{customdata[5]} no ICU evidence · ⚪ %{customdata[6]} insufficient<br>"
+        "%{customdata[7]}% judgeable<br><i>Click to investigate</i><extra></extra>"
+    )
+    for trace in fig.data:
+        trace.hovertemplate = template.replace("STATUS", str(trace.name))
+    fig.update_layout(
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.0, "font": {"size": 12}},
+        margin={"l": 0, "r": 0, "t": 10, "b": 0},
+        map_style="open-street-map",
+    )
+    event = st.plotly_chart(
+        fig, width="stretch", on_select="rerun", selection_mode="points", key="national_map"
+    )
+    try:
+        points = event.selection.points  # type: ignore[union-attr]
+    except (AttributeError, TypeError):
+        points = []
+    if not points:
+        # Selection cleared (or fresh mount): allow the next click to apply.
+        st.session_state.pop("last_map_region_applied", None)
+        return None
+    clicked = (str(points[0]["customdata"][0]), str(points[0]["customdata"][1]))
+    if clicked == st.session_state.get("last_map_region_applied"):
+        return None
+    st.session_state["last_map_region_applied"] = clicked
+    return clicked
+
+
+def national_landing(subset: pd.DataFrame, summary: dict, centroids: pd.DataFrame, n_districts: int) -> None:
+    """All-India entry view: evidence landscape map + India-wide panel."""
+    left, right = st.columns([3, 2], gap="medium")
+    with left:
+        st.subheader("India ICU evidence landscape", anchor=False)
+        st.caption(
+            "Explore where supplied records contain trusted ICU evidence, where claims "
+            "require verification, and where the data is too incomplete to assess. "
+            "Bubble size = number of supplied records."
+        )
+        clicked = national_evidence_map(centroids)
+        missing = max(0, n_districts - len(centroids))
+        st.caption(
+            f"⚠️ {LANDSCAPE_CAPTION}"
+            + (
+                f" {missing} district(s) without validly-located records are not on this "
+                "map - use the selectors above."
+                if missing
+                else ""
+            )
+        )
+        if clicked:
+            st.session_state["pending_scenario"] = {"state": clicked[0], "district": clicked[1]}
+            st.rerun()
+    with right:
+        st.subheader("India-wide evidence", anchor=False)
+        guidance = regional_guidance(summary["region_status"])
+        m1, m2 = st.columns(2)
+        m1.metric("Facility records", summary["facility_count"])
+        m2.metric(
+            "Judgeable records",
+            f"{summary['pct_sufficient_data']:.0f} %",
+            help=(
+                "Share of records whose fields are populated enough to evaluate what "
+                "the record claims (record judgeability). Populated fields are not "
+                "necessarily ICU-informative, and this is NOT operational readiness."
+            ),
+        )
+        m3, m4 = st.columns(2)
+        m3.metric(
+            f"{CLASS_ICONS[CLASS_TRUSTED]} Trusted ICU evidence",
+            summary["trusted_icu_count"],
+            help="Records meeting the Trusted ICU evidence standard under the current rules.",
+        )
+        m4.metric(
+            f"{CLASS_ICONS[CLASS_NEEDS_REVIEW]} Needs verification",
+            summary["needs_review_count"],
+            help="Records with unresolved ICU claims - the human-review worklist.",
+        )
+        distribution_bar(subset)
+        st.markdown(f"**{guidance.meaning}**")
+        st.markdown(f"**Recommended next action** — {guidance.action}")
+        st.info(
+            "Select a district — or click a bubble on the map — to investigate the evidence."
+        )
+        st.caption(f"⚠️ {REGION_DISCLAIMER}")
 
 
 def hero_card(region_label: str, summary: dict) -> None:
@@ -963,16 +1111,33 @@ def main() -> None:
 
     # ---------------- 2 · Understand the evidence ----------------
     summary = summarize_facilities(subset, config)
-    hero_card(region_label, summary)
-    decision_path_row(summary, config)
-    metrics_row(summary)
-    distribution_bar(subset)
-    technical_metrics_expander(summary)
-    if state == "All India" or not district:
+    if state == "All India":
+        # National entry view: the evidence landscape is the visual front door.
+        centroids = district_centroids(scored, region_district)
+        n_districts = len(
+            region_district[
+                (region_district["state"] != UNASSIGNED)
+                & (region_district["district"] != UNASSIGNED)
+            ]
+        )
+        national_landing(subset, summary, centroids, n_districts)
+        decision_path_row(summary, config)
+        technical_metrics_expander(summary)
         st.caption(
-            "State-level numbers are high-level summaries — select a district for the "
+            "National numbers are high-level summaries — select a district for the "
             "planning view."
         )
+    else:
+        hero_card(region_label, summary)
+        decision_path_row(summary, config)
+        metrics_row(summary)
+        distribution_bar(subset)
+        technical_metrics_expander(summary)
+        if not district:
+            st.caption(
+                "State-level numbers are high-level summaries — select a district for the "
+                "planning view."
+            )
 
     # Context-aware regional visualization.
     map_selected_id: str | None = None
