@@ -45,3 +45,55 @@ def test_state_selection_updates_summary():
     assert not at.exception, at.exception
     headers = " ".join(h.value for h in at.header)
     assert "Kerala" in headers
+
+
+@needs_data
+def test_scenario_acceptance_save_reopen_restart():
+    """Acceptance: select a district, save a named scenario, refresh, reopen,
+    verify the filters and snapshot, 'restart', verify it survived."""
+    from caregap_map.scenarios import SqliteScenarioStore
+
+    store = SqliteScenarioStore(Path("data") / "reviews.db")
+    before_ids = {s.id for s in store.list_scenarios()}
+
+    # --- select a district and save a named scenario -----------------------
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    next(sb for sb in at.selectbox if sb.label == "State").select("Kerala")
+    at.run()
+    district_box = next(sb for sb in at.selectbox if sb.label == "District (optional)")
+    district = district_box.options[1]
+    district_box.select(district)
+    at.run()
+    next(ti for ti in at.text_input if ti.label == "Scenario name").input("Acceptance scenario")
+    next(b for b in at.button if getattr(b, "label", "") == "Save scenario").click()
+    at.run()
+    assert not at.exception, at.exception
+
+    created = [s for s in store.list_scenarios() if s.id not in before_ids]
+    assert len(created) == 1
+    saved = created[0]
+    try:
+        assert saved.state == "Kerala" and saved.district == district
+        assert saved.facility_count > 0
+        assert saved.data_snapshot and saved.scoring_config_hash
+
+        # --- refresh (new session), reopen, verify the filters -------------
+        at2 = AppTest.from_file(str(APP), default_timeout=120)
+        at2.run()
+        scenario_box = next(sb for sb in at2.selectbox if sb.label == "Scenario")
+        option = next(o for o in scenario_box.options if o.startswith("Acceptance scenario"))
+        scenario_box.select(option)
+        at2.run()
+        at2.button(key=f"reopen_{saved.id}").click()
+        at2.run()
+        assert not at2.exception, at2.exception
+        assert next(sb for sb in at2.selectbox if sb.label == "State").value == "Kerala"
+        assert (
+            next(sb for sb in at2.selectbox if sb.label == "District (optional)").value == district
+        )
+
+        # --- 'restart': a brand-new store instance still has the scenario --
+        assert SqliteScenarioStore(Path("data") / "reviews.db").get_scenario(saved.id) is not None
+    finally:
+        store.delete_scenario(saved.id)

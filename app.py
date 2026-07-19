@@ -43,6 +43,13 @@ load_env_file()  # .env overrides nothing that is already in the environment
 from caregap_map.data_access import MissingDataError, get_data_source  # noqa: E402
 from caregap_map.persistence import ReviewNote, ReviewStore, get_review_store  # noqa: E402
 from caregap_map.planning import PLANNING_COMPONENTS, assess_planning_readiness  # noqa: E402
+from caregap_map.scenarios import (  # noqa: E402
+    ScenarioStore,
+    data_snapshot_id,
+    get_scenario_store,
+    scenario_from_summary,
+    scoring_config_fingerprint,
+)
 
 # Status colors (validated with the dataviz palette checker, severity order:
 # trusted -> review -> gap -> no data so green/red are never adjacent).
@@ -81,6 +88,12 @@ def note_store() -> ReviewStore:
     # CAREGAP_REVIEW_STORE=sqlite (local default) | databricks (Delta table,
     # survives app restarts - required for the deployed app).
     return get_review_store()
+
+
+@st.cache_resource
+def scenario_store() -> ScenarioStore:
+    # Follows CAREGAP_SCENARIO_STORE, falling back to CAREGAP_REVIEW_STORE.
+    return get_scenario_store()
 
 
 def status_banner(status: str, reason: str) -> None:
@@ -245,6 +258,108 @@ def metrics_row(summary: dict) -> None:
             "current evidence rules - not the share of facilities with an ICU."
         ),
     )
+
+
+def scenarios_panel(
+    state: str,
+    district: str | None,
+    summary: dict,
+    subset: pd.DataFrame,
+    scored: pd.DataFrame,
+    config,
+) -> None:
+    """Save the current planning view; list/reopen/delete saved scenarios."""
+    store = scenario_store()
+    st.subheader("📋 Planning scenarios")
+    st.caption(
+        "A scenario stores your current selection and its aggregate evidence metrics "
+        "(a snapshot of supplied-record evidence - not a verified coverage assessment). "
+        "Scenarios persist across page refreshes and app restarts."
+    )
+    snapshot = data_snapshot_id(scored)
+    attachable = len(subset) <= 50
+
+    with st.expander("💾 Save planning scenario"), st.form(key="scenario_form", clear_on_submit=True):
+        name = st.text_input("Scenario name", max_chars=120)
+        author = st.text_input("Author (optional)", max_chars=80, key="scenario_author")
+        note = st.text_area(
+            "Planner note (optional)",
+            placeholder="e.g. Verify the two flagged facilities before budgeting.",
+        )
+        include_ids = st.checkbox(
+            f"Attach the {len(subset)} facility ID(s) in this selection"
+            if attachable
+            else f"Attach facility IDs (disabled: {len(subset)} records in selection, max 50)",
+            value=False,
+            disabled=not attachable,
+        )
+        if st.form_submit_button("Save scenario"):
+            if not name.strip():
+                st.error("Give the scenario a name.")
+            else:
+                scenario = scenario_from_summary(
+                    name=name,
+                    summary=summary,
+                    state=None if state == "All India" else state,
+                    district=district,
+                    author=author,
+                    note=note.strip(),
+                    selected_facility_ids=(
+                        subset["unique_id"].tolist() if include_ids and attachable else []
+                    ),
+                    scoring_config_hash=scoring_config_fingerprint(config),
+                    data_snapshot=snapshot,
+                )
+                saved = store.save_scenario(scenario)
+                st.success(f"Saved scenario “{saved.name}” ({saved.region_label}).")
+
+    saved_scenarios = store.list_scenarios()
+    with st.expander(f"📂 Saved scenarios ({len(saved_scenarios)})"):
+        if not saved_scenarios:
+            st.caption("No saved scenarios yet.")
+            return
+        options = {
+            f"{s.name} — {s.region_label} ({s.created_at})": s.id for s in saved_scenarios
+        }
+        choice = st.selectbox("Scenario", list(options.keys()))
+        scenario = store.get_scenario(options[choice])
+        if scenario is None:
+            st.warning("Scenario no longer exists.")
+            return
+        st.markdown(
+            f"**{scenario.name}** — {scenario.region_label} · {scenario.capability}  \n"
+            f"Saved {scenario.created_at} by {scenario.author or 'anonymous'}  \n"
+            f"Status then: {scenario.region_status}  \n"
+            f"Records {scenario.facility_count} · trusted {scenario.trusted_count} · "
+            f"review {scenario.needs_review_count} · no-ICU-evidence "
+            f"{scenario.no_icu_evidence_count} · insufficient {scenario.insufficient_data_count}  \n"
+            f"Judgeable {scenario.judgeable_pct:.0f} % · trusted-record share "
+            f"{scenario.trusted_record_share_pct:.0f} % · evidence index "
+            f"{scenario.trust_weighted_evidence_index:.2f}  \n"
+            f"Config `{scenario.scoring_config_hash}` · data `{scenario.data_snapshot}`"
+        )
+        if scenario.note:
+            st.markdown(f"> {scenario.note}")
+        if scenario.selected_facility_ids:
+            st.caption(f"{len(scenario.selected_facility_ids)} attached facility ID(s).")
+        if scenario.data_snapshot != snapshot:
+            st.warning(
+                "This scenario was saved against a different data snapshot - the numbers "
+                "shown above may not be reproducible from the currently loaded data."
+            )
+        col_open, col_delete = st.columns(2)
+        with col_open:
+            if st.button("Reopen scenario", key=f"reopen_{scenario.id}"):
+                st.session_state["pending_scenario"] = {
+                    "state": scenario.state,
+                    "district": scenario.district,
+                }
+                st.rerun()
+        with col_delete:
+            confirmed = st.checkbox("Confirm deletion", key=f"confirm_delete_{scenario.id}")
+            if st.button("Delete scenario", key=f"delete_{scenario.id}", disabled=not confirmed):
+                store.delete_scenario(scenario.id)
+                st.rerun()
 
 
 def notes_panel(scope_type: str, scope_id: str, context: str) -> None:
@@ -439,10 +554,17 @@ def main() -> None:
     config = load_scoring_config()
 
     # ---------------- Sidebar: capability + region selection ----------------
+    # A reopened scenario sets the selection before the widgets instantiate.
+    pending = st.session_state.pop("pending_scenario", None)
     with st.sidebar:
         st.selectbox("Capability", ["ICU"], disabled=True, help="This milestone supports ICU only.")
         states = sorted(s for s in scored["state_final"].dropna().unique())
-        state = st.selectbox("State", ["All India"] + states + [UNASSIGNED])
+        state_options = ["All India"] + states + [UNASSIGNED]
+        if pending is not None:
+            target_state = pending.get("state") or "All India"
+            if target_state in state_options:
+                st.session_state["state_select"] = target_state
+        state = st.selectbox("State", state_options, key="state_select")
         district = None
         if state not in ("All India", UNASSIGNED):
             districts = sorted(
@@ -451,7 +573,12 @@ def main() -> None:
                 .fillna(UNASSIGNED)
                 .unique()
             )
-            district = st.selectbox("District (optional)", ["All districts"] + districts)
+            district_options = ["All districts"] + districts
+            if pending is not None:
+                target_district = pending.get("district") or "All districts"
+                if target_district in district_options:
+                    st.session_state["district_select"] = target_district
+            district = st.selectbox("District (optional)", district_options, key="district_select")
             if district == "All districts":
                 district = None
         st.divider()
@@ -495,6 +622,12 @@ def main() -> None:
             "⚠️ This region is a **data desert**: the records are too thin to judge. "
             "Treat it as *unknown*, not as a confirmed ICU gap."
         )
+
+    # ---------------- Planning scenarios ----------------
+    try:
+        scenarios_panel(state, district, summary, subset, scored, config)
+    except Exception as exc:  # scenario persistence must never block the demo
+        st.warning(f"Planning scenarios are unavailable right now ({exc}). Notes still work.")
 
     # ---------------- Regional chart ----------------
     if state == "All India":
