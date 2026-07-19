@@ -47,12 +47,15 @@ geographic fields.
 **The two scores are independent by construction** — completeness never looks at what is
 claimed, evidence never looks at how much is filled in.
 
-Three separately displayed concepts (D20): **record judgeability** (the completeness
-score: are the fields populated enough to evaluate the record's claims?), **ICU evidence
-strength** (the evidence score + classification), and **planning readiness** (a
-transparent six-item checklist over planner-useful fields — coordinates, district,
-source URL, capacity, doctor count, determinate evidence status). Judgeability is never
-presented as planning readiness or "full documentation".
+Four separately displayed concepts (D20, D23): **ICU evidence strength** (the evidence
+score), **record judgeability** (the completeness score: are the fields populated
+enough to evaluate the record's claims?), **operational data availability** (a
+transparent six-item data checklist — location resolved, source/provenance, total
+facility capacity, total doctor count, source-anchored ICU bed count, independent
+ICU-relevant operational detail), and the **automated evidence assessment** (what the
+deterministic rules concluded and whether a human still needs to review). Judgeability
+is never presented as operational data availability or "full documentation", and the
+checklist never feeds classification.
 
 ## Classification logic
 
@@ -91,7 +94,7 @@ JSON file pointed to by `CAREGAP_SCORING_CONFIG` (see DECISIONS.md D5).
 5. View the facilities behind the regional result.
 6. Open a facility and inspect: supplied-record claims, exact supporting fragments,
    missing evidence, contradictions, suspicious claims, score breakdown, and the
-   planning-readiness checklist.
+   operational data availability checklist and automated evidence assessment.
 7. Save a reviewer note (e.g. *"Verify these facilities before classifying this
    district as an ICU desert."*) and/or a structured **planning scenario** (selection +
    aggregate metrics + note; reopenable after refresh and restart — D22).

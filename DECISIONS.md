@@ -299,3 +299,48 @@ back to `CAREGAP_REVIEW_STORE`. Reopening restores the selection; deletion requi
 explicit confirmation; the UI panel is exception-wrapped so persistence problems can
 never block the demo (notes remain the fallback). Scenario data never feeds scoring or
 classification. No authentication — the author field is free text, as with notes.
+
+## D23 — Operational data availability replaces "planning readiness"; assessment status is its own block
+
+The challenge did not prescribe a planning-readiness checklist — the six-item view was
+created by CareGap Map (D20) as a transparent operational-data companion to the two
+scores. Its first version had three semantic defects: it **mixed operational data
+fields with an algorithmic outcome** ("evidence rules reached a definite answer" is a
+classification result, not a field), it **double-weighted geography** (coordinates and
+district as two separate points), and the "definite answer (trusted / no evidence)"
+phrasing was unclear — "no evidence" actually meant the internal `Likely Medical Gap`
+class, and a high evidence score can still land in review (contradictions, suspicious
+content, insufficient corroboration, no explicit claim).
+
+**Decision:** the checklist becomes **"Operational data availability"** with six
+internally consistent DATA criteria:
+
+1. `location resolved` — valid India coordinates **or** resolved state+district
+   (one point, never two; the detail line shows both signals);
+2. `source or provenance available` — at least one source URL, always displayed with
+   the caveat that source presence ≠ current/first-party/reliable, plus a warning when
+   the `directory_or_partner_content_detected` validator fired;
+3. `total facility bed capacity stated` — facility-wide, never labelled ICU capacity;
+4. `total doctor count stated` — facility-wide, never labelled ICU staffing;
+5. `source-anchored ICU bed count stated` — only the existing anchoring rule (number +
+   bed word + ICU context in one verified fragment); totals, separate numbers or
+   inferred counts never satisfy it; specialised-subtype counts display their subtype
+   and never imply general adult ICU beds;
+6. `ICU-relevant staffing, equipment or procedure detail stated` — satisfied exactly by
+   the independent corroboration categories `staffing` / `equipment` / `procedure`
+   (existing independence rules; `bed_count` is item 5; generic non-ICU content and
+   self-corroborating explicit phrases never count).
+
+The classification outcome moved to a separate **"Automated evidence assessment"**
+block (resolved: Trusted / No-ICU-evidence; unresolved: Human review required with the
+stored reason and contradiction/suspicious flags, or Insufficient data). The drilldown
+therefore shows **four visually distinct concepts**: ICU evidence strength, record
+judgeability, operational data availability, automated evidence assessment.
+
+**Compatibility:** descriptive only — no change to either score, classification
+constants, class counts (203 / 2,867 / 6,890 / 117), regional statuses (103 / 256 /
+32 / 186), aggregation, fragment verification or corroboration thresholds; computed at
+display time from existing columns (no Parquet rebuild). `PlanningScenario` never
+stored readiness fields, so saved scenarios are unaffected and need no version bump.
+The module keeps its `planning.py` filename; the public API uses the new wording. This
+checklist is NOT a clinically validated planning-readiness standard.

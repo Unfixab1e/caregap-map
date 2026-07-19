@@ -30,8 +30,8 @@ situations."*
      **distinct evidence categories** ("a marketing phrase can't corroborate itself"),
      **ICU subtype** ("NICU only — no general adult ICU claim" where applicable),
      a **validator flag**, the **missing evidence** list, and the
-     **planning-readiness checklist** ("judgeable is not planning-ready — this one has
-     no capacity and no doctor count").
+     **operational data availability checklist** ("judgeable does not mean the
+     operational data is there — this one has no capacity and no doctor count").
 
 4. **(0:50–1:10) Save and reopen a planning scenario.** On the 🔴 district:
    > "I save this as a scenario — selection, metrics, my note, the scoring-config
@@ -54,7 +54,7 @@ situations."*
 ## Honesty guardrails (never say)
 
 - "99 % of Indian facilities are fully documented" (99 % is *record judgeability* —
-  populated fields, not verified documentation and not planning readiness)
+  populated fields, not verified documentation and not operational data availability)
 - "68 % of India lacks ICU care" (facility-level evidence absence ≠ regional
   conclusions; many are non-hospital organizations)
 - "2 % national ICU coverage" (2 % is the *trusted-record share* of supplied records)

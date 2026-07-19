@@ -8,6 +8,16 @@ names, capacity filled for a quarter of facilities, and "ICU" in a marketing blu
 a verified ICU. Mapped naively, every badly documented district looks like a medical
 desert.
 
+**Scope:** CareGap Map implements the Medical Desert Planner workflow for **ICU as the
+first supported capability**. The architecture is capability-extensible, but each
+additional capability requires its own evidence vocabulary, validators, scoring
+calibration and human evaluation — this prototype deliberately validates ICU deeply
+rather than applying shallow keyword rules across many clinical capabilities.
+
+> **Trust disclaimer:** CareGap Map assesses evidence in supplied facility records. It
+> does not verify current ICU operation, bed availability, staffing availability or
+> clinical service access.
+
 **Core differentiator:** CareGap Map never treats *"no reliable ICU evidence"* as
 *"no ICU exists."* Facilities land in one of four states (stored constant → displayed
 wording, D19):
@@ -30,7 +40,7 @@ Every classification is traceable to **exact text fragments from the supplied fa
 record**, for both the deterministic extractor and the optional LLM extractor (whose
 quotes are verified verbatim against the record; hallucinated quotes are dropped and
 flagged). See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the frozen scope and
-[DECISIONS.md](DECISIONS.md) for the decision log (D1–D22).
+[DECISIONS.md](DECISIONS.md) for the decision log (D1–D23).
 
 ## How to read the headline numbers
 
@@ -50,9 +60,9 @@ Current All-India values and what they do — and do not — mean:
 - **Judgeable records: 99 %.** This means the records' *fields are populated* enough to
   evaluate what each record claims (record judgeability). It does **not** mean the
   content is ICU-informative (73.7 % of judgeable records carry only generic non-ICU
-  procedure/equipment content) and it is **not** planning readiness (74.8 % lack
-  capacity, 63.6 % lack a doctor count) — see the per-facility planning-readiness
-  checklist (D20).
+  procedure/equipment content) and it is **not** operational data availability (74.8 % lack
+  capacity, 63.6 % lack a doctor count) — see the per-facility operational-data
+  checklist (D20, D23).
 - **Trust-weighted ICU evidence index (0–1)** — average capability-evidence score
   weighted by record completeness. **Not** population or geographic coverage.
 - **Trusted-record share (2 %)** — share of supplied records classified Trusted under
@@ -103,8 +113,8 @@ logs.
 **CareGap Map provides:** evidence extraction; exact-fragment
 verification; deterministic validators; ICU subtype logic; evidence and
 completeness scoring; data-desert vs planning-gap logic; the planner
-workflow; planning readiness; the human-review workflow; saved planning
-scenarios.
+workflow; operational data availability; the human-review workflow; saved
+planning scenarios.
 
 Databricks did not produce the custom scoring or classification logic —
 and the custom logic never certifies real-world clinical availability.
@@ -159,9 +169,8 @@ deliberately excludes `openai` (LLM extraction is an offline preprocessing workf
    deserts are never conflated**.
 3. Open the facility table behind the regional result, filter by evidence status.
 4. Drill into a facility: supplied record, exact evidence fragments, score breakdown,
-   validator flags, missing evidence, and the **planning-readiness checklist** (three
-   separate concepts: record judgeability, ICU evidence strength, planning readiness —
-   D20).
+   validator flags, missing evidence, the **operational data availability checklist**
+   and the **automated evidence assessment** block (four separate concepts — D20/D23).
 5. Save **planning scenarios** (structured snapshot of the selection + aggregate metrics
    + note; reopen/delete later — D22) and reviewer notes on a facility, district or
    state. Both persist in SQLite locally and Delta tables on Databricks.
@@ -183,7 +192,7 @@ src/caregap_map/
   scoring.py               independent evidence & completeness scores + classes
   aggregation.py           state/district rollups, gap-vs-desert logic
   audit.py                 headline-metric diagnostics + audit categorizer
-  planning.py              planning-readiness checklist (separate from judgeability)
+  planning.py              operational-data checklist + assessment status (D23)
   scenarios.py             PlanningScenario model + SQLite/Delta stores
   data_access.py           DataSource protocol (local now, Databricks later)
   persistence.py           ReviewStore protocol (SQLite implementation)

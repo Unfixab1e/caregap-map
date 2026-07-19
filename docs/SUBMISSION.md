@@ -17,7 +17,7 @@ deterministic, fully traceable evidence pipeline classifies every record
 (Trusted ICU evidence / Needs Human Review / No ICU evidence in judgeable
 record / Insufficient Data), a regional layer separates **potential
 planning gaps** from **data deserts**, and a planner workflow (drilldown
-with exact fragments, planning-readiness checklist, durable notes and
+with exact fragments, operational-data checklist, durable notes and
 saved planning scenarios) runs as a Databricks App over Unity Catalog
 storage with Delta persistence and MLflow 3 evaluation.
 **Databricks is the governed operating layer; CareGap Map is the trust
@@ -28,7 +28,7 @@ and planning logic built on top of it.**
 - [ ] Headline: 203 of 10,077 ≠ "only 203 ICUs"
 - [ ] Data desert vs potential planning gap (two districts)
 - [ ] Drilldown: fragment, categories, subtype, validator flag, missing
-      evidence, planning readiness
+      evidence, operational data availability
 - [ ] Save + reopen a planning scenario (refresh survives)
 - [ ] Databricks architecture beat (App / volume / warehouse / Delta / MLflow)
 - [ ] Close: "only source-verifiable evidence affects the score"
